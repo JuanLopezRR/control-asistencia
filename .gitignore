@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+*.db
+__pycache__/
+*.pyc
+src-tauri/target/
+*.exe
+*.msi
+*.nsis
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+run_sql.py
+backend/attendance.db

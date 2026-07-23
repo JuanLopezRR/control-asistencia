@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
@@ -14,6 +14,27 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [now, setNow] = useState(new Date())
   const [geoStatus, setGeoStatus] = useState<{ inside: boolean; distance?: number; location?: string } | null>(null)
   const [showQR, setShowQR] = useState(false)
+  const [locationGranted, setLocationGranted] = useState<boolean | null>(null)
+  const [requestingLocation, setRequestingLocation] = useState(false)
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+
+  const requestLocation = useCallback(async () => {
+    setRequestingLocation(true)
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000 })
+      })
+      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      setLocationGranted(true)
+    } catch {
+      setLocationGranted(false)
+    }
+    setRequestingLocation(false)
+  }, [])
+
+  useEffect(() => {
+    requestLocation()
+  }, [])
 
   const loadData = async () => {
     try {
@@ -27,24 +48,25 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   }
 
   useEffect(() => {
-    loadData()
+    if (locationGranted) loadData()
+  }, [locationGranted])
+
+  useEffect(() => {
+    if (!data?.active_session_id || !coords) return
+    checkGeofence()
+    const interval = setInterval(checkGeofence, 30000)
+    return () => clearInterval(interval)
+  }, [data?.active_session_id, coords])
+
+  useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    if (!data?.active_session_id) return
-    const interval = setInterval(checkGeofence, 30000)
-    checkGeofence()
-    return () => clearInterval(interval)
-  }, [data?.active_session_id])
-
   const checkGeofence = async () => {
+    if (!coords) return
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
-      })
-      const result = await api.geofence.check(pos.coords.latitude, pos.coords.longitude, employeeId)
+      const result = await api.geofence.check(coords.lat, coords.lng, employeeId)
       setGeoStatus({
         inside: result.inside,
         distance: result.distance_meters,
@@ -53,6 +75,44 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     } catch {
       setGeoStatus(null)
     }
+  }
+
+  if (locationGranted === null || requestingLocation) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <div className="animate-spin w-10 h-10 border-2 border-zinc-300 border-t-zinc-900 rounded-full mx-auto mb-4" />
+          <p className="text-zinc-600 font-medium">Solicitando acceso a ubicación...</p>
+          <p className="text-xs text-zinc-400 mt-2">Necesitamos tu ubicación para verificar que estés dentro del perímetro de trabajo</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (locationGranted === false) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <div className="p-4 bg-red-100 rounded-full mx-auto mb-4 w-fit">
+            <Navigation size={32} className="text-red-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-zinc-800 mb-2">Ubicación requerida</h2>
+          <p className="text-sm text-zinc-500 mb-6">
+            Debes permitir el acceso a tu ubicación para usar esta aplicación. Tu ubicación se usa solo para verificar que estés dentro del perímetro de trabajo.
+          </p>
+          <button
+            onClick={requestLocation}
+            disabled={requestingLocation}
+            className="w-full px-6 py-3 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 disabled:opacity-40 transition-colors"
+          >
+            {requestingLocation ? 'Solicitando...' : 'Permitir ubicación'}
+          </button>
+          <p className="text-xs text-zinc-400 mt-4">
+            Si bloqueaste la ubicación, ve a la configuración de tu navegador y permítela para este sitio
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -88,9 +148,15 @@ export default function EmployeeAppPage({ employeeId }: Props) {
             <h1 className="text-lg font-semibold text-zinc-800">{emp?.name}</h1>
             <p className="text-xs text-zinc-400">{emp?.position || 'Empleado'}</p>
           </div>
-          <button onClick={() => setShowQR(!showQR)} className="p-2 rounded-lg bg-zinc-900 text-white">
-            <QrCode size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-600">
+              <MapPin size={12} />
+              <span className="text-[10px] font-medium">GPS</span>
+            </div>
+            <button onClick={() => setShowQR(!showQR)} className="p-2 rounded-lg bg-zinc-900 text-white">
+              <QrCode size={18} />
+            </button>
+          </div>
         </div>
 
         {showQR && (
@@ -163,7 +229,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           </div>
         )}
 
-        <button onClick={loadData} className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-xs hover:text-zinc-600">
+        <button onClick={() => { loadData(); requestLocation() }} className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-xs hover:text-zinc-600">
           <RefreshCw size={14} /> Actualizar
         </button>
       </div>

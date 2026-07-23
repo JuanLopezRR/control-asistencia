@@ -128,7 +128,7 @@ export default function FaceScanPage() {
 
   const findBestMatch = (descriptor: Float32Array) => {
     let best: { id: number; name: string; distance: number } | null = null
-    let bestDist = 0.6
+    let bestDist = 0.4
     for (const known of knownFacesRef.current) {
       let sum = 0
       for (let i = 0; i < descriptor.length; i++) {
@@ -186,8 +186,8 @@ export default function FaceScanPage() {
         const match = findBestMatch(detections[0].descriptor)
         if (match) {
           matchCountRef.current += 1
-          setMatchInfo(`Cara detectada: ${match.name} (${matchCountRef.current}/2)`)
-          if (matchCountRef.current >= 2) {
+          setMatchInfo(`Cara detectada: ${match.name} (${matchCountRef.current}/4)`)
+          if (matchCountRef.current >= 4) {
             scanActiveRef.current = false
             await handleFaceMatch(match.id, match.name)
           }

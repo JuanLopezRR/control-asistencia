@@ -97,11 +97,11 @@ def get_pending_checks(db: Session, employee_id: int = None) -> list:
     query = db.query(PresenceCheck).filter(
         PresenceCheck.status == "pending",
         PresenceCheck.scheduled_at <= now,
-        PresenceCheck.scheduled_at + timedelta(seconds=PresenceCheck.timeout_seconds) >= now
     )
     if employee_id:
         query = query.filter(PresenceCheck.employee_id == employee_id)
-    return query.all()
+    all_pending = query.all()
+    return [c for c in all_pending if (now - c.scheduled_at).total_seconds() <= (c.timeout_seconds or 120)]
 
 
 def is_employee_exempt(db: Session, employee_id: int) -> bool:

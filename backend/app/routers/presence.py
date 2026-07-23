@@ -54,7 +54,7 @@ def check_missed(db: Session = Depends(get_db)):
 
 @router.post("/schedule")
 def schedule_check(
-    employee_id: int,
+    employee_id: int = Query(...),
     timeout_seconds: int = Query(120),
     tz_offset: Optional[int] = Query(None),
     db: Session = Depends(get_db),
@@ -87,3 +87,8 @@ def schedule_check(
     db.commit()
     db.refresh(check)
     return {"status": "ok", "check_id": check.id, "employee": emp.name, "scheduled_at": check.scheduled_at.isoformat()}
+
+
+@router.options("/schedule")
+def schedule_check_options():
+    return {}

@@ -27,6 +27,7 @@ export default function PresencePage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmp, setSelectedEmp] = useState<number | ''>('')
   const [scheduleMsg, setScheduleMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [scheduling, setScheduling] = useState(false)
   const [tab, setTab] = useState<'pending' | 'history'>('pending')
 
   const load = async () => {
@@ -49,15 +50,19 @@ export default function PresencePage() {
 
   const handleSchedule = async () => {
     if (!selectedEmp) return
+    setScheduling(true)
+    setScheduleMsg(null)
     try {
       const res = await api.presence.schedule(selectedEmp)
-      setScheduleMsg({ type: 'success', text: `Validacion programada para ${res.employee}` })
+      setScheduleMsg({ type: 'success', text: `Validacion enviada a ${res.employee}` })
       setSelectedEmp('')
       await load()
     } catch (e: any) {
-      setScheduleMsg({ type: 'error', text: e.message || 'Error al programar' })
+      const msg = e.message || 'Error al programar'
+      setScheduleMsg({ type: 'error', text: msg.includes('Failed to fetch') ? 'Servidor no disponible, intenta de nuevo en unos segundos' : msg })
     }
-    setTimeout(() => setScheduleMsg(null), 4000)
+    setScheduling(false)
+    setTimeout(() => setScheduleMsg(null), 5000)
   }
 
   const formatTime = (dt: string) => new Date(dt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })

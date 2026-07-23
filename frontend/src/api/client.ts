@@ -147,7 +147,7 @@ export const api = {
     checkMissed: () => request<any>('/presence/check-missed', { method: 'POST' }),
     schedule: (employeeId: number, timeoutSeconds: number = 120) => {
       const tz = new Date().getTimezoneOffset()
-      return request<any>(`/presence/schedule?employee_id=${employeeId}&timeout_seconds=${timeoutSeconds}&tz_offset=${tz}`, { method: 'POST' })
+      return request<any>(`/presence/schedule?employee_id=${employeeId}&timeout_seconds=${timeoutSeconds}&tz_offset=${tz}`, { method: 'POST', body: '{}' })
     },
   },
   wifi: {

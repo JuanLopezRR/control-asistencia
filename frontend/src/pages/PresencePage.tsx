@@ -67,11 +67,11 @@ export default function PresencePage() {
 
   const formatTime = (dt: string) => {
     const d = new Date(dt.endsWith('Z') ? dt : dt + 'Z')
-    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Mexico_City' })
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Bogota' })
   }
   const formatDate = (dt: string) => {
     const d = new Date(dt.endsWith('Z') ? dt : dt + 'Z')
-    return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' })
+    return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
   }
 
   const getStatusIcon = (status: string) => {

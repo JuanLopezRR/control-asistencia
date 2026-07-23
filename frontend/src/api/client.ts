@@ -1,11 +1,11 @@
-const DEFAULT_API_URL = import.meta.env.PROD
-  ? (import.meta.env.VITE_API_URL || 'https://control-asistencia-s090.onrender.com/api')
-  : '/api'
+const RENDER_URL = 'https://control-asistencia-s090.onrender.com/api'
+
+const DEFAULT_API_URL = import.meta.env.PROD ? RENDER_URL : '/api'
 
 function getBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('api_url')
-    if (saved && saved.startsWith('http')) return saved
+    if (saved && saved.startsWith('http') && !saved.includes('localhost')) return saved
   }
   return DEFAULT_API_URL
 }

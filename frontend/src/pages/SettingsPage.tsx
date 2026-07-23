@@ -14,7 +14,8 @@ export default function SettingsPage() {
   const [online, setOnline] = useState(navigator.onLine)
 
   useEffect(() => {
-    setApiUrlState(localStorage.getItem('api_url') || '')
+    const saved = localStorage.getItem('api_url')
+    setApiUrlState(saved && saved.startsWith('http') && !saved.includes('localhost') ? saved : '')
     const handleOnline = () => setOnline(true)
     const handleOffline = () => setOnline(false)
     window.addEventListener('online', handleOnline)
@@ -44,7 +45,8 @@ export default function SettingsPage() {
     return () => clearInterval(interval)
   }, [syncConfigured, apiUrl])
 
-  const baseUrl = () => apiUrl || (import.meta.env.PROD ? 'http://localhost:8000/api' : '/api')
+  const RENDER_URL = 'https://control-asistencia-s090.onrender.com/api'
+  const baseUrl = () => apiUrl || (import.meta.env.PROD ? RENDER_URL : '/api')
 
   const handleSaveApiUrl = () => {
     setApiUrl(apiUrl)

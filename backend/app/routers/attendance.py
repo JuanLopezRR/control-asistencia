@@ -180,12 +180,12 @@ def clock_in(
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
-    today = date.today()
     utc_now = datetime.utcnow()
     if tz_offset is not None:
         local_now = utc_now - timedelta(minutes=tz_offset)
     else:
         local_now = utc_now
+    today = local_now.date()
     now = local_now
     scheduled = now.replace(hour=SCHEDULE_START_HOUR, minute=SCHEDULE_START_MINUTE, second=0, microsecond=0)
     grace = scheduled.replace(minute=SCHEDULE_START_MINUTE + GRACE_MINUTES)
@@ -238,9 +238,9 @@ def _create_session_and_checks(
     entry_method: Optional[str],
     local_now: Optional[datetime] = None,
 ):
-    today = date.today()
     if local_now is None:
         local_now = datetime.utcnow()
+    today = local_now.date()
     existing_session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,
         WorkSession.date == today,

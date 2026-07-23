@@ -66,11 +66,11 @@ def schedule_check(
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
+    utc_now = datetime.utcnow()
     if tz_offset is not None:
-        utc_now = datetime.utcnow()
         local_now = utc_now - timedelta(minutes=tz_offset)
     else:
-        local_now = datetime.utcnow()
+        local_now = utc_now()
 
     session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,
@@ -83,7 +83,7 @@ def schedule_check(
     check = PresenceCheck(
         employee_id=employee_id,
         work_session_id=session.id,
-        scheduled_at=local_now,
+        scheduled_at=utc_now,
         timeout_seconds=timeout_seconds,
     )
     db.add(check)

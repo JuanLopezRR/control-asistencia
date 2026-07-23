@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Camera, CameraOff, UserCheck, UserX, Clock, ScanLine, AlertCircle, LogOut, Coffee, LogIn, Power } from 'lucide-react'
+import { UserCheck, UserX, Clock, ScanLine, AlertCircle, LogOut, Coffee, LogIn, Power } from 'lucide-react'
 import { api } from '../api/client'
 import { getGeoAndWifi } from '../utils/location'
 

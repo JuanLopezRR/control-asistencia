@@ -117,7 +117,8 @@ export default function AttendancePage() {
                 const exit = rec.exit_time ? rec.exit_time.split(':').map(Number) : null
                 let total = ''
                 if (entry && exit) {
-                  const diff = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+                  let diff = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+                  if (diff < 0) diff += 1440
                   total = `${Math.floor(diff / 60)}h ${diff % 60}m`
                 }
                 return (

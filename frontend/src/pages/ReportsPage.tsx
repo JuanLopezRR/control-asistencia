@@ -33,7 +33,8 @@ export default function ReportsPage() {
     .map((r) => {
       const entry = r.entry_time!.split(':').map(Number)
       const exit = r.exit_time!.split(':').map(Number)
-      const mins = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+      let mins = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+      if (mins < 0) mins += 1440
       return {
         date: new Date(r.date + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit' }),
         hours: Number((mins / 60).toFixed(1)),
@@ -144,7 +145,8 @@ export default function ReportsPage() {
                 const exit = r.exit_time?.split(':').map(Number)
                 let total = ''
                 if (entry && exit) {
-                  const diff = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+                  let diff = (exit[0] * 60 + exit[1]) - (entry[0] * 60 + entry[1])
+                  if (diff < 0) diff += 1440
                   total = `${Math.floor(diff / 60)}h ${diff % 60}m`
                 }
                 return (

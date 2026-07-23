@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.models import WorkSession, PresenceCheck, Employee, SpecialStatus
@@ -13,6 +13,12 @@ def schedule_random_checks(db: Session, work_session_id: int, employee_id: int, 
     min_interval = 1800
     if duration / count < min_interval:
         count = max(1, int(duration / min_interval))
+
+    existing = db.query(PresenceCheck).filter(
+        PresenceCheck.work_session_id == work_session_id
+    ).count()
+    if existing > 0:
+        return []
 
     checks = []
     for _ in range(count):
@@ -33,14 +39,20 @@ def schedule_random_checks(db: Session, work_session_id: int, employee_id: int, 
 
 def respond_to_check(db: Session, check_id: int, response_method: str = "selfie_face_gps",
                      selfie_url: str = None, response_lat: float = None,
-                     response_lng: float = None, response_wifi_ssid: str = None) -> PresenceCheck:
+                     response_lng: float = None, response_wifi_ssid: str = None,
+                     tz_offset: int = None) -> PresenceCheck:
     check = db.query(PresenceCheck).filter(PresenceCheck.id == check_id).first()
     if not check:
         raise ValueError("Verificación no encontrada")
     if check.status != "pending":
         raise ValueError("Esta verificación ya fue respondida")
 
-    now = datetime.now()
+    if tz_offset is not None:
+        utc_now = datetime.utcnow()
+        now = utc_now - timedelta(minutes=tz_offset)
+    else:
+        now = datetime.now()
+
     time_diff = (now - check.scheduled_at).total_seconds()
 
     if time_diff > check.timeout_seconds:
@@ -61,7 +73,7 @@ def respond_to_check(db: Session, check_id: int, response_method: str = "selfie_
 
 
 def check_missed_verifications(db: Session) -> list:
-    now = datetime.now()
+    now = datetime.utcnow()
     pending = db.query(PresenceCheck).filter(
         PresenceCheck.status == "pending",
         PresenceCheck.scheduled_at + timedelta(seconds=PresenceCheck.timeout_seconds) < now
@@ -78,7 +90,7 @@ def check_missed_verifications(db: Session) -> list:
 
 
 def get_pending_checks(db: Session, employee_id: int = None) -> list:
-    now = datetime.now()
+    now = datetime.utcnow()
     query = db.query(PresenceCheck).filter(
         PresenceCheck.status == "pending",
         PresenceCheck.scheduled_at <= now,
@@ -90,7 +102,7 @@ def get_pending_checks(db: Session, employee_id: int = None) -> list:
 
 
 def is_employee_exempt(db: Session, employee_id: int) -> bool:
-    now = datetime.now()
+    now = datetime.utcnow()
     return db.query(SpecialStatus).filter(
         SpecialStatus.employee_id == employee_id,
         SpecialStatus.check_exempt == True,

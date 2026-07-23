@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, Bell } from 'lucide-react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, Bell, Camera, Shield } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
@@ -31,9 +31,14 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [actionLoading, setActionLoading] = useState('')
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [pendingScan, setPendingScan] = useState<{ scanId: number } | null>(null)
+  const [presenceCheck, setPresenceCheck] = useState<{ checkId: number; timeout: number } | null>(null)
+  const [selfieMode, setSelfieMode] = useState(false)
+  const [presenceLoading, setPresenceLoading] = useState(false)
   const lastTickRef = useRef<number>(Date.now())
   const initializedRef = useRef(false)
   const dismissedScansRef = useRef<Set<number>>(new Set())
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   const requestLocation = useCallback(async () => {
     setRequestingLocation(true)
@@ -82,6 +87,98 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     const interval = setInterval(checkPending, 3000)
     return () => clearInterval(interval)
   }, [locationGranted, employeeId])
+
+  useEffect(() => {
+    if (!locationGranted || !data?.active_session_id) return
+    const checkPresence = async () => {
+      try {
+        const checks = await api.presence.pending(employeeId)
+        if (checks.length > 0 && !presenceCheck && !selfieMode) {
+          setPresenceCheck({ checkId: checks[0].id, timeout: checks[0].timeout_seconds })
+        }
+      } catch {}
+    }
+    checkPresence()
+    const interval = setInterval(checkPresence, 10000)
+    return () => clearInterval(interval)
+  }, [locationGranted, employeeId, data?.active_session_id])
+
+  const startSelfie = async () => {
+    setSelfieMode(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+    } catch {
+      setSelfieMode(false)
+    }
+  }
+
+  const captureSelfie = async () => {
+    if (!videoRef.current || !presenceCheck) return
+    setPresenceLoading(true)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = videoRef.current.videoWidth
+      canvas.height = videoRef.current.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0)
+      }
+      const selfieData = canvas.toDataURL('image/jpeg', 0.5)
+
+      let lat: number | null = null
+      let lng: number | null = null
+      if (coords) {
+        lat = coords.lat
+        lng = coords.lng
+      } else {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
+          })
+          lat = pos.coords.latitude
+          lng = pos.coords.longitude
+        } catch {}
+      }
+
+      await api.presence.respond({
+        check_id: presenceCheck.checkId,
+        response_method: 'selfie_face_gps',
+        selfie_url: selfieData,
+        response_lat: lat,
+        response_lng: lng,
+      })
+
+      setActionResult({ type: 'success', message: 'Validacion confirmada' })
+      setPresenceCheck(null)
+      setSelfieMode(false)
+      setTimeout(() => setActionResult(null), 4000)
+    } catch (e: any) {
+      setActionResult({ type: 'error', message: e.message || 'Error al validar' })
+      setPresenceCheck(null)
+      setSelfieMode(false)
+      setTimeout(() => setActionResult(null), 4000)
+    }
+    setPresenceLoading(false)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+  }
+
+  const cancelSelfie = () => {
+    setSelfieMode(false)
+    setPresenceCheck(null)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+  }
 
   const respondToScan = async (action: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
     if (!pendingScan) return
@@ -366,6 +463,73 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           </div>
           <p className="text-xs text-zinc-400 ml-8">{now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
+
+        {presenceCheck && selfieMode && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full flex flex-col items-center gap-4 shadow-xl">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <Camera size={32} className="text-blue-600" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-zinc-800">Validacion aleatoria</h2>
+                <p className="text-sm text-zinc-500 mt-1">Toma una selfie para confirmar tu presencia</p>
+              </div>
+              <div className="w-full max-w-xs rounded-xl overflow-hidden bg-zinc-900" style={{ aspectRatio: '4/3' }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+              </div>
+              <div className="w-full flex flex-col gap-2">
+                <button
+                  onClick={captureSelfie}
+                  disabled={presenceLoading}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-40"
+                >
+                  {presenceLoading ? (
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    <Camera size={18} />
+                  )}
+                  {presenceLoading ? 'Validando...' : 'Tomar selfie'}
+                </button>
+                <button
+                  onClick={cancelSelfie}
+                  disabled={presenceLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-sm hover:text-zinc-600 transition-colors"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {presenceCheck && !selfieMode && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full flex flex-col items-center gap-4 shadow-xl">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <Shield size={32} className="text-blue-600 animate-pulse" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-zinc-800">Validacion aleatoria</h2>
+                <p className="text-sm text-zinc-500 mt-1">Confirma que estas presente</p>
+              </div>
+              <div className="w-full flex flex-col gap-2">
+                <button
+                  onClick={startSelfie}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700"
+                >
+                  <Camera size={18} /> Tomar selfie
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {hasSession && (
           <div className="bg-white rounded-xl border border-zinc-200 p-5">

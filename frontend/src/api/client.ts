@@ -128,8 +128,11 @@ export const api = {
   },
   presence: {
     pending: (employee_id?: number) => {
-      const q = employee_id ? `?employee_id=${employee_id}` : ''
-      return request<any[]>(`/presence/pending${q}`)
+      const tz = new Date().getTimezoneOffset()
+      const q = new URLSearchParams()
+      if (employee_id) q.set('employee_id', String(employee_id))
+      q.set('tz_offset', String(tz))
+      return request<any[]>(`/presence/pending?${q}`)
     },
     history: (params?: { employee_id?: number; status?: string }) => {
       const q = new URLSearchParams()
@@ -137,7 +140,10 @@ export const api = {
       if (params?.status) q.set('status', params.status)
       return request<any[]>(`/presence/history?${q}`)
     },
-    respond: (data: any) => request<any>('/presence/respond', { method: 'POST', body: JSON.stringify(data) }),
+    respond: (data: any) => {
+      const tz = new Date().getTimezoneOffset()
+      return request<any>(`/presence/respond?tz_offset=${tz}`, { method: 'POST', body: JSON.stringify(data) })
+    },
     checkMissed: () => request<any>('/presence/check-missed', { method: 'POST' }),
   },
   wifi: {

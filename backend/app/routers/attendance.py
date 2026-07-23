@@ -320,6 +320,11 @@ def _create_session_and_checks(
                 severity="info",
             )
 
+    from app.services.presence import schedule_random_checks, is_employee_exempt
+    if not is_employee_exempt(db, employee_id):
+        work_end = local_now + timedelta(hours=9)
+        schedule_random_checks(db, session.id, employee_id, local_now, work_end, count=4)
+
     db.commit()
 
 

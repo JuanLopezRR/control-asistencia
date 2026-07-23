@@ -382,7 +382,7 @@ export default function FaceScanPage() {
   }, [])
 
   const isScanning = status === 'scanning'
-  const mirror = cameras.length > 0 && selectedCamera === cameras[0]?.id
+  const mirror = facingModeRef.current === 'user'
 
   return (
     <div className="space-y-6">

@@ -1,10 +1,17 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
 interface Props {
   employeeId: number
+}
+
+function formatTime(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = Math.floor(totalSeconds % 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 export default function EmployeeAppPage({ employeeId }: Props) {
@@ -17,6 +24,12 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null)
   const [requestingLocation, setRequestingLocation] = useState(false)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+
+  const [workSeconds, setWorkSeconds] = useState(0)
+  const [breakSeconds, setBreakSeconds] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const lastTickRef = useRef<number>(Date.now())
+  const initializedRef = useRef(false)
 
   const requestLocation = useCallback(async () => {
     setRequestingLocation(true)
@@ -63,6 +76,70 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    if (!data?.active_session_id || !data?.today_record) {
+      initializedRef.current = false
+      return
+    }
+
+    const rec = data.today_record
+    if (!rec?.entry_time) return
+
+    if (!initializedRef.current) {
+      const nowMs = Date.now()
+      const entryMs = new Date(`1970-01-01T${rec.entry_time}`).getTime()
+      const totalElapsed = Math.floor((nowMs - entryMs) / 1000)
+
+      let breakTotal = 0
+      if (rec.break_start) {
+        const breakStartMs = new Date(`1970-01-01T${rec.break_start}`).getTime()
+        if (rec.break_end) {
+          const breakEndMs = new Date(`1970-01-01T${rec.break_end}`).getTime()
+          breakTotal = Math.floor((breakEndMs - breakStartMs) / 1000)
+        } else {
+          breakTotal = Math.floor((nowMs - breakStartMs) / 1000)
+        }
+      }
+
+      const onBreak = !!rec.break_start && !rec.break_end
+      const insidePerimeter = geoStatus?.inside ?? true
+
+      const worked = Math.max(0, totalElapsed - breakTotal)
+      setWorkSeconds(worked)
+      setBreakSeconds(breakTotal)
+      setIsPaused(!insidePerimeter && !onBreak)
+      lastTickRef.current = nowMs
+      initializedRef.current = true
+    }
+  }, [data?.active_session_id, data?.today_record, geoStatus?.inside])
+
+  useEffect(() => {
+    if (!data?.active_session_id) return
+
+    const tick = setInterval(() => {
+      const nowMs = Date.now()
+      const delta = Math.floor((nowMs - lastTickRef.current) / 1000)
+      lastTickRef.current = nowMs
+
+      if (delta <= 0 || delta > 10) return
+
+      const onBreak = data?.today_record?.break_start && !data?.today_record?.break_end
+      const inside = geoStatus?.inside ?? false
+
+      if (onBreak) {
+        setBreakSeconds(prev => prev + delta)
+        setIsPaused(false)
+      } else if (inside) {
+        setWorkSeconds(prev => prev + delta)
+        setIsPaused(false)
+      } else {
+        setIsPaused(true)
+      }
+    }, 1000)
+
+    return () => clearInterval(tick)
+  }, [data?.active_session_id, geoStatus?.inside, data?.today_record?.break_start, data?.today_record?.break_end])
+
   const checkGeofence = async () => {
     if (!coords) return
     try {
@@ -82,8 +159,8 @@ export default function EmployeeAppPage({ employeeId }: Props) {
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
           <div className="animate-spin w-10 h-10 border-2 border-zinc-300 border-t-zinc-900 rounded-full mx-auto mb-4" />
-          <p className="text-zinc-600 font-medium">Solicitando acceso a ubicación...</p>
-          <p className="text-xs text-zinc-400 mt-2">Necesitamos tu ubicación para verificar que estés dentro del perímetro de trabajo</p>
+          <p className="text-zinc-600 font-medium">Solicitando acceso a ubicacion...</p>
+          <p className="text-xs text-zinc-400 mt-2">Necesitamos tu ubicacion para verificar que este dentro del perimetro de trabajo</p>
         </div>
       </div>
     )
@@ -96,19 +173,19 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           <div className="p-4 bg-red-100 rounded-full mx-auto mb-4 w-fit">
             <Navigation size={32} className="text-red-500" />
           </div>
-          <h2 className="text-lg font-semibold text-zinc-800 mb-2">Ubicación requerida</h2>
+          <h2 className="text-lg font-semibold text-zinc-800 mb-2">Ubicacion requerida</h2>
           <p className="text-sm text-zinc-500 mb-6">
-            Debes permitir el acceso a tu ubicación para usar esta aplicación. Tu ubicación se usa solo para verificar que estés dentro del perímetro de trabajo.
+            Debes permitir el acceso a tu ubicacion para usar esta aplicacion. Tu ubicacion se usa solo para verificar que este dentro del perimetro de trabajo.
           </p>
           <button
             onClick={requestLocation}
             disabled={requestingLocation}
             className="w-full px-6 py-3 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 disabled:opacity-40 transition-colors"
           >
-            {requestingLocation ? 'Solicitando...' : 'Permitir ubicación'}
+            {requestingLocation ? 'Solicitando...' : 'Permitir ubicacion'}
           </button>
           <p className="text-xs text-zinc-400 mt-4">
-            Si bloqueaste la ubicación, ve a la configuración de tu navegador y permítela para este sitio
+            Si bloqueaste la ubicacion, ve a la configuracion de tu navegador y permitela para este sitio
           </p>
         </div>
       </div>
@@ -139,6 +216,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const rec = data?.today_record
   const hours = data?.total_hours_today || 0
   const onBreak = !!rec?.break_start && !rec?.break_end
+  const hasSession = !!data?.active_session_id
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -176,9 +254,51 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           <p className="text-xs text-zinc-400 ml-8">{now.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
 
+        {hasSession && (
+          <div className="bg-white rounded-xl border border-zinc-200 p-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Timer size={16} className="text-green-600" />
+                  <span className="text-xs font-medium text-green-600">Trabajo</span>
+                </div>
+                <p className="text-2xl font-mono font-bold text-green-700 tabular-nums">
+                  {formatTime(workSeconds)}
+                </p>
+                {isPaused && (
+                  <span className="text-[10px] text-amber-500 font-medium mt-1 inline-block">
+                    PAUSADO
+                  </span>
+                )}
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Coffee size={16} className="text-orange-500" />
+                  <span className="text-xs font-medium text-orange-500">Descanso</span>
+                </div>
+                <p className="text-2xl font-mono font-bold text-orange-600 tabular-nums">
+                  {formatTime(breakSeconds)}
+                </p>
+                {onBreak && (
+                  <span className="text-[10px] text-orange-400 font-medium mt-1 inline-block animate-pulse">
+                    EN DESCANSO
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-zinc-100 text-center">
+              <span className="text-[10px] text-zinc-400">
+                {!geoStatus?.inside ? 'Fuera del perimetro — tiempo no registrado' :
+                 onBreak ? 'Descanso activo — tiempo de trabajo en pausa' :
+                 'Contando horas de trabajo'}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-zinc-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-zinc-600">Horas hoy</span>
+            <span className="text-sm font-medium text-zinc-600">Resumen del dia</span>
             <span className="text-2xl font-bold text-zinc-900 tabular-nums">{hours.toFixed(2)}h</span>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -202,12 +322,12 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           )}
         </div>
 
-        {data?.active_session_id && (
+        {hasSession && (
           <div className={`rounded-xl border p-4 ${geoStatus?.inside ? 'bg-green-50 border-green-200' : geoStatus ? 'bg-red-50 border-red-200' : 'bg-zinc-50 border-zinc-200'}`}>
             <div className="flex items-center gap-2">
               <MapPin size={16} className={geoStatus?.inside ? 'text-green-600' : 'text-red-500'} />
               <span className={`text-sm font-medium ${geoStatus?.inside ? 'text-green-700' : 'text-red-600'}`}>
-                {geoStatus?.inside ? 'Dentro del perímetro' : geoStatus ? 'Fuera del perímetro' : 'Verificando ubicación...'}
+                {geoStatus?.inside ? 'Dentro del perimetro' : geoStatus ? 'Fuera del perimetro' : 'Verificando ubicacion...'}
               </span>
             </div>
             {geoStatus && (
@@ -229,7 +349,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           </div>
         )}
 
-        <button onClick={() => { loadData(); requestLocation() }} className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-xs hover:text-zinc-600">
+        <button onClick={() => { loadData(); requestLocation(); initializedRef.current = false }} className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-xs hover:text-zinc-600">
           <RefreshCw size={14} /> Actualizar
         </button>
       </div>

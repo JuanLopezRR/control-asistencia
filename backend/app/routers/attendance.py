@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from app.database import get_db
 from app.models import Employee, AttendanceRecord, WorkSession, WorkLocation, Incident
-from app.sync import get_unsynced, mark_synced, push_to_supabase
+from app.sync import push_to_supabase
 from app.sync_config import get_supabase_url
 from app.schemas import (
     AttendanceCreate,
@@ -408,11 +408,6 @@ def delete_record(record_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@router.get("/sync/unsynced")
-def unsynced_data(db: Session = Depends(get_db)):
-    return get_unsynced(db)
-
-
 class SyncMark(BaseModel):
     employee_ids: list[int] = []
     record_ids: list[int] = []
@@ -420,8 +415,7 @@ class SyncMark(BaseModel):
 
 @router.post("/sync/mark")
 def mark_data(data: SyncMark, db: Session = Depends(get_db)):
-    mark_synced(db, data.employee_ids, data.record_ids)
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Sync no longer needed - Supabase is primary"}
 
 
 class SyncPush(BaseModel):

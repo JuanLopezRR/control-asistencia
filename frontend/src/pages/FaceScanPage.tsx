@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { UserCheck, UserX, Clock, ScanLine, AlertCircle, Power, Bell, Camera } from 'lucide-react'
+import { UserCheck, UserX, Clock, ScanLine, AlertCircle, Power, Bell, Camera, RotateCw } from 'lucide-react'
 import { api } from '../api/client'
 
 export default function FaceScanPage() {
@@ -25,6 +25,7 @@ export default function FaceScanPage() {
   const qrCooldownRef = useRef(false)
   const barcodeDetectorRef = useRef<any>(null)
   const selectedCameraRef = useRef('')
+  const facingModeRef = useRef<'user' | 'environment'>('user')
 
   const resumeScanning = useCallback(() => {
     setTimeout(() => {
@@ -262,6 +263,23 @@ export default function FaceScanPage() {
     await startScanning()
   }
 
+  const toggleFacingMode = async () => {
+    facingModeRef.current = facingModeRef.current === 'user' ? 'environment' : 'user'
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    scanActiveRef.current = false
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    await startScanning()
+  }
+
   const startScanning = async () => {
     setResult(null)
     setErrorMsg('')
@@ -396,6 +414,14 @@ export default function FaceScanPage() {
               </select>
             </div>
           )}
+          <button
+            onClick={toggleFacingMode}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors"
+            title="Cambiar frontal/trasera"
+          >
+            <RotateCw size={16} />
+            {facingModeRef.current === 'user' ? 'Frontal' : 'Trasera'}
+          </button>
           <button
             onClick={toggleKioskMode}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${

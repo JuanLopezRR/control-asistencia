@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee } from 'lucide-react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, LogIn, LogOut } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
@@ -28,6 +28,8 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [workSeconds, setWorkSeconds] = useState(0)
   const [breakSeconds, setBreakSeconds] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [actionLoading, setActionLoading] = useState('')
+  const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const lastTickRef = useRef<number>(Date.now())
   const initializedRef = useRef(false)
 
@@ -158,6 +160,35 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     }
   }
 
+  const executeAction = async (action: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+    setActionLoading(action)
+    setActionResult(null)
+    try {
+      const extras = coords ? { latitude: coords.lat, longitude: coords.lng } : undefined
+
+      if (action === 'clock_in') {
+        await api.attendance.clockIn(employeeId, undefined, extras)
+        setActionResult({ type: 'success', message: 'Entrada registrada' })
+      } else if (action === 'clock_out') {
+        await api.attendance.clockOut(employeeId)
+        setActionResult({ type: 'success', message: 'Salida registrada' })
+      } else if (action === 'break_start') {
+        await api.attendance.breakStart(employeeId)
+        setActionResult({ type: 'success', message: 'Descanso iniciado' })
+      } else if (action === 'break_end') {
+        await api.attendance.breakEnd(employeeId)
+        setActionResult({ type: 'success', message: 'Descanso finalizado' })
+      }
+
+      initializedRef.current = false
+      await loadData()
+    } catch (e: any) {
+      setActionResult({ type: 'error', message: e.message || 'Error al registrar' })
+    }
+    setActionLoading('')
+    setTimeout(() => setActionResult(null), 4000)
+  }
+
   if (locationGranted === null || requestingLocation) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -221,6 +252,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const hours = data?.total_hours_today || 0
   const onBreak = !!rec?.break_start && !rec?.break_end
   const hasSession = !!data?.active_session_id
+  const hasEntry = !!rec?.entry_time
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -340,6 +372,56 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                 {geoStatus.distance !== undefined && `${Math.round(geoStatus.distance)}m`}
               </p>
             )}
+          </div>
+        )}
+
+        {!hasEntry && !actionLoading && (
+          <button
+            onClick={() => executeAction('clock_in')}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-colors"
+          >
+            <LogIn size={18} /> Registrar entrada
+          </button>
+        )}
+
+        {hasEntry && hasSession && !onBreak && !actionLoading && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => executeAction('break_start')}
+              className="flex items-center justify-center gap-2 py-3 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors"
+            >
+              <Coffee size={18} /> Descanso
+            </button>
+            <button
+              onClick={() => executeAction('clock_out')}
+              className="flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              <LogOut size={18} /> Salida
+            </button>
+          </div>
+        )}
+
+        {onBreak && !actionLoading && (
+          <button
+            onClick={() => executeAction('break_end')}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <Coffee size={18} /> Finalizar descanso
+          </button>
+        )}
+
+        {actionLoading && (
+          <div className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 text-zinc-400 rounded-xl text-sm font-medium">
+            <div className="animate-spin w-4 h-4 border-2 border-zinc-300 border-t-zinc-600 rounded-full" />
+            Registrando...
+          </div>
+        )}
+
+        {actionResult && (
+          <div className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium ${
+            actionResult.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+          }`}>
+            {actionResult.type === 'success' ? '✓' : '✕'} {actionResult.message}
           </div>
         )}
 

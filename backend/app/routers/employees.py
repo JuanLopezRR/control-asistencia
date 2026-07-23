@@ -114,7 +114,9 @@ def employee_app_data(employee_id: int, tz_offset: Optional[int] = Query(None), 
     record = db.query(AttendanceRecord).filter(
         AttendanceRecord.employee_id == employee_id,
         AttendanceRecord.date == today,
-    ).first()
+        AttendanceRecord.entry_time.isnot(None),
+        AttendanceRecord.exit_time.is_(None),
+    ).order_by(AttendanceRecord.id.desc()).first()
 
     session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,

@@ -197,11 +197,28 @@ def clock_in(
             AttendanceRecord.employee_id == employee_id,
             AttendanceRecord.date == today,
         )
+        .order_by(AttendanceRecord.id.desc())
         .first()
     )
     if existing:
-        if existing.entry_time:
-            raise HTTPException(status_code=400, detail="Ya registró entrada hoy")
+        if existing.entry_time and not existing.exit_time:
+            raise HTTPException(status_code=400, detail="Ya tiene entrada activa, registre salida primero")
+        if existing.entry_time and existing.exit_time:
+            record = AttendanceRecord(
+                employee_id=employee_id,
+                date=today,
+                entry_time=now.time(),
+                late=is_late,
+                justification=justification,
+                synced=False,
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            record.employee = emp
+            _create_session_and_checks(db, employee_id, latitude, longitude, wifi_ssid, entry_method, local_now)
+            _try_sync(db)
+            return _record_to_response(record)
         existing.entry_time = now.time()
         existing.late = is_late
         existing.justification = justification
@@ -331,15 +348,14 @@ def clock_out(employee_id: int = Query(...), tz_offset: Optional[int] = Query(No
         .filter(
             AttendanceRecord.employee_id == employee_id,
             AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
         )
+        .order_by(AttendanceRecord.id.desc())
         .first()
     )
     if not record:
-        raise HTTPException(status_code=400, detail="No tiene registro de entrada hoy")
-    if not record.entry_time:
-        raise HTTPException(status_code=400, detail="Primero debe registrar entrada")
-    if record.exit_time:
-        raise HTTPException(status_code=400, detail="Ya registró salida hoy")
+        raise HTTPException(status_code=400, detail="No tiene entrada activa para cerrar")
     record.exit_time = local_now.time()
     record.synced = False
     db.commit()
@@ -371,11 +387,14 @@ def break_start(employee_id: int = Query(...), tz_offset: Optional[int] = Query(
         .filter(
             AttendanceRecord.employee_id == employee_id,
             AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
         )
+        .order_by(AttendanceRecord.id.desc())
         .first()
     )
     if not record:
-        raise HTTPException(status_code=400, detail="No tiene registro de entrada hoy")
+        raise HTTPException(status_code=400, detail="No tiene entrada activa")
     if record.break_start and not record.break_end:
         raise HTTPException(status_code=400, detail="Ya está en descanso")
     record.break_start = local_now.time()
@@ -398,11 +417,14 @@ def break_end(employee_id: int = Query(...), tz_offset: Optional[int] = Query(No
         .filter(
             AttendanceRecord.employee_id == employee_id,
             AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
         )
+        .order_by(AttendanceRecord.id.desc())
         .first()
     )
     if not record:
-        raise HTTPException(status_code=400, detail="No tiene registro de entrada hoy")
+        raise HTTPException(status_code=400, detail="No tiene entrada activa")
     if not record.break_start:
         raise HTTPException(status_code=400, detail="No inició descanso")
     if record.break_end:
@@ -512,7 +534,12 @@ def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset:
         return {"status": "ok", "action": "entrada"}
 
     elif action == "clock_out":
-        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        record = db.query(AttendanceRecord).filter(
+            AttendanceRecord.employee_id == employee_id,
+            AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
+        ).order_by(AttendanceRecord.id.desc()).first()
         if record:
             record.exit_time = local_now.time()
             record.synced = False
@@ -528,7 +555,12 @@ def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset:
         return {"status": "ok", "action": "salida"}
 
     elif action == "break_start":
-        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        record = db.query(AttendanceRecord).filter(
+            AttendanceRecord.employee_id == employee_id,
+            AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
+        ).order_by(AttendanceRecord.id.desc()).first()
         if record:
             record.break_start = local_now.time()
             record.synced = False
@@ -539,7 +571,12 @@ def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset:
         return {"status": "ok", "action": "descanso_iniciado"}
 
     elif action == "break_end":
-        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        record = db.query(AttendanceRecord).filter(
+            AttendanceRecord.employee_id == employee_id,
+            AttendanceRecord.date == today,
+            AttendanceRecord.entry_time.isnot(None),
+            AttendanceRecord.exit_time.is_(None),
+        ).order_by(AttendanceRecord.id.desc()).first()
         if record:
             record.break_end = local_now.time()
             record.synced = False

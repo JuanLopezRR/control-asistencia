@@ -125,7 +125,13 @@ def employee_app_data(employee_id: int, tz_offset: Optional[int] = Query(None), 
     total_hours_today = 0.0
     if session and session.start_time:
         elapsed = (local_now - session.start_time).total_seconds() / 3600
-        total_hours_today = round(elapsed, 2)
+        break_hours = 0.0
+        if record and record.break_start:
+            if record.break_end:
+                break_hours = (datetime.combine(today, record.break_end) - datetime.combine(today, record.break_start)).total_seconds() / 3600
+            else:
+                break_hours = (local_now - datetime.combine(today, record.break_start)).total_seconds() / 3600
+        total_hours_today = round(max(0, elapsed - break_hours), 2)
 
     completed_sessions = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,

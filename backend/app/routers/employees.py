@@ -1,7 +1,7 @@
-from datetime import date, datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date, datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -99,12 +99,18 @@ def get_all_faces(db: Session = Depends(get_db)):
 
 
 @router.get("/{employee_id}/app")
-def employee_app_data(employee_id: int, db: Session = Depends(get_db)):
+def employee_app_data(employee_id: int, tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
-    today = date.today()
+    utc_now = datetime.utcnow()
+    if tz_offset is not None:
+        local_now = utc_now - timedelta(minutes=tz_offset)
+    else:
+        local_now = utc_now
+    today = local_now.date()
+
     record = db.query(AttendanceRecord).filter(
         AttendanceRecord.employee_id == employee_id,
         AttendanceRecord.date == today,
@@ -112,12 +118,13 @@ def employee_app_data(employee_id: int, db: Session = Depends(get_db)):
 
     session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,
+        WorkSession.date == today,
         WorkSession.status == "active",
     ).first()
 
     total_hours_today = 0.0
-    if session:
-        elapsed = (datetime.utcnow() - session.start_time).total_seconds() / 3600
+    if session and session.start_time:
+        elapsed = (local_now - session.start_time).total_seconds() / 3600
         total_hours_today = round(elapsed, 2)
 
     completed_sessions = db.query(WorkSession).filter(

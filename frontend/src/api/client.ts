@@ -44,7 +44,7 @@ export const api = {
       request<void>(`/employees/${id}`, { method: 'DELETE' }),
     registerFace: (id: number, descriptor: string) =>
       request<any>(`/employees/${id}/face`, { method: 'POST', body: JSON.stringify({ descriptor }) }),
-    appData: (id: number) => request<any>(`/employees/${id}/app`),
+    appData: (id: number) => request<any>(`/employees/${id}/app?tz_offset=${new Date().getTimezoneOffset()}`),
   },
   attendance: {
     getAllFaces: () => request<any[]>('/employees/faces/all'),

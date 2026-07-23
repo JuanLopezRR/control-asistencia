@@ -322,9 +322,9 @@ def check_late(employee_id: int, tz_offset: Optional[int] = Query(None)):
 
 @router.post("/clock-out", response_model=AttendanceResponse)
 def clock_out(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    today = date.today()
     utc_now = datetime.utcnow()
     local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
+    today = local_now.date()
     record = (
         db.query(AttendanceRecord)
         .options(joinedload(AttendanceRecord.employee))
@@ -347,6 +347,7 @@ def clock_out(employee_id: int = Query(...), tz_offset: Optional[int] = Query(No
 
     session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,
+        WorkSession.date == today,
         WorkSession.status == "active",
     ).first()
     if session:
@@ -363,7 +364,7 @@ def clock_out(employee_id: int = Query(...), tz_offset: Optional[int] = Query(No
 def break_start(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
     utc_now = datetime.utcnow()
     local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
-    today = date.today()
+    today = local_now.date()
     record = (
         db.query(AttendanceRecord)
         .options(joinedload(AttendanceRecord.employee))
@@ -390,7 +391,7 @@ def break_start(employee_id: int = Query(...), tz_offset: Optional[int] = Query(
 def break_end(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
     utc_now = datetime.utcnow()
     local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
-    today = date.today()
+    today = local_now.date()
     record = (
         db.query(AttendanceRecord)
         .options(joinedload(AttendanceRecord.employee))
@@ -501,7 +502,7 @@ def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset:
         if record:
             record.exit_time = local_now.time()
             record.synced = False
-        session = db.query(WorkSession).filter(WorkSession.employee_id == employee_id, WorkSession.status == "active").first()
+        session = db.query(WorkSession).filter(WorkSession.employee_id == employee_id, WorkSession.date == today, WorkSession.status == "active").first()
         if session:
             session.end_time = local_now
             session.status = "completed"

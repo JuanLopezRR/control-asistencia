@@ -6,15 +6,19 @@ from pydantic import BaseModel
 
 from app.database import engine, Base, SessionLocal
 from app.routers import employees, attendance, locations, sessions, geofence, presence, wifi, incidents, permissions
-from app.sync import push_to_supabase, get_unsynced
 from app.sync_config import get_supabase_url, set_supabase_url
+from app.config import get_settings
+
+settings = get_settings()
 
 Base.metadata.create_all(bind=engine)
 
-SYNC_INTERVAL = 10
+SYNC_INTERVAL = 30
 
 
 def auto_sync_loop():
+    from app.sync_pull import pull_from_supabase
+    from app.sync import push_to_supabase
     while True:
         time.sleep(SYNC_INTERVAL)
         try:
@@ -24,6 +28,7 @@ def auto_sync_loop():
             db = SessionLocal()
             try:
                 push_to_supabase(url, db)
+                pull_from_supabase(url)
             finally:
                 db.close()
         except Exception:
@@ -57,7 +62,13 @@ app.include_router(permissions.router)
 
 @app.on_event("startup")
 def start_sync_thread():
-    if get_supabase_url():
+    from app.sync_pull import pull_from_supabase
+    url = get_supabase_url()
+    if url:
+        try:
+            pull_from_supabase(url)
+        except Exception:
+            pass
         t = threading.Thread(target=auto_sync_loop, daemon=True)
         t.start()
 
@@ -69,9 +80,14 @@ class SupabaseConfig(BaseModel):
 @app.post("/api/sync/configure")
 def configure_sync(data: SupabaseConfig):
     set_supabase_url(data.url)
+    from app.sync_pull import pull_from_supabase
+    try:
+        pull_from_supabase(data.url)
+    except Exception:
+        pass
     t = threading.Thread(target=auto_sync_loop, daemon=True)
     t.start()
-    return {"status": "ok", "message": "Sincronización automática activa (cada 10 segundos)"}
+    return {"status": "ok", "message": "Sincronización automática activa (cada 30 segundos)"}
 
 
 @app.get("/api/sync/status")

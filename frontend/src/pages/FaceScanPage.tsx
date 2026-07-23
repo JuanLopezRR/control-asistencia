@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { UserCheck, UserX, Clock, ScanLine, AlertCircle, Power, Bell, RotateCw } from 'lucide-react'
+import { UserCheck, UserX, Clock, ScanLine, AlertCircle, Power, Bell, Camera } from 'lucide-react'
 import { api } from '../api/client'
 
 export default function FaceScanPage() {
@@ -9,6 +9,8 @@ export default function FaceScanPage() {
   const [matchInfo, setMatchInfo] = useState('')
   const [lastEvent, setLastEvent] = useState<{ employee: string; action: string; time: string } | null>(null)
   const [mirror, setMirror] = useState(true)
+  const [cameras, setCameras] = useState<{ id: string; label: string }[]>([])
+  const [selectedCamera, setSelectedCamera] = useState('')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -23,7 +25,7 @@ export default function FaceScanPage() {
   const kioskModeRef = useRef(true)
   const qrCooldownRef = useRef(false)
   const barcodeDetectorRef = useRef<any>(null)
-  const facingModeRef = useRef<'user' | 'environment'>('user')
+  const selectedCameraRef = useRef('')
 
   const resumeScanning = useCallback(() => {
     setTimeout(() => {
@@ -229,9 +231,23 @@ export default function FaceScanPage() {
     }
   }, [])
 
-  const switchCamera = async () => {
-    facingModeRef.current = facingModeRef.current === 'user' ? 'environment' : 'user'
-    setMirror(facingModeRef.current === 'user')
+  const enumerateCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices
+        .filter(d => d.kind === 'videoinput')
+        .map(d => ({ id: d.deviceId, label: d.label || `Camara ${d.deviceId.slice(0, 6)}` }))
+      setCameras(videoDevices)
+      if (videoDevices.length > 0 && !selectedCameraRef.current) {
+        selectedCameraRef.current = videoDevices[0].id
+        setSelectedCamera(videoDevices[0].id)
+      }
+    } catch {}
+  }
+
+  const switchCamera = async (deviceId: string) => {
+    selectedCameraRef.current = deviceId
+    setSelectedCamera(deviceId)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop())
       streamRef.current = null
@@ -256,7 +272,9 @@ export default function FaceScanPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingModeRef.current, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: selectedCameraRef.current
+          ? { deviceId: { exact: selectedCameraRef.current }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
       })
       streamRef.current = stream
       if (videoRef.current) {
@@ -333,6 +351,7 @@ export default function FaceScanPage() {
 
   useEffect(() => {
     const init = async () => {
+      await enumerateCameras()
       await loadModels()
       kioskModeRef.current = true
       await startScanning()
@@ -363,14 +382,20 @@ export default function FaceScanPage() {
             <div className={`w-2 h-2 rounded-full ${kioskModeRef.current && isScanning ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'}`} />
             {kioskModeRef.current && isScanning ? 'ACTIVO' : 'INACTIVO'}
           </div>
-          <button
-            onClick={switchCamera}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors"
-            title="Cambiar camara"
-          >
-            <RotateCw size={16} />
-            Cambiar camara
-          </button>
+          {cameras.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Camera size={16} className="text-zinc-500" />
+              <select
+                value={selectedCamera}
+                onChange={e => switchCamera(e.target.value)}
+                className="text-sm bg-zinc-100 text-zinc-700 border border-zinc-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                {cameras.map(c => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             onClick={toggleKioskMode}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${

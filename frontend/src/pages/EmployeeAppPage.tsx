@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, X, Camera, Bell, LogIn, LogOut } from 'lucide-react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, Bell } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
@@ -30,12 +30,9 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [isPaused, setIsPaused] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [showScanner, setShowScanner] = useState(false)
   const [pendingScan, setPendingScan] = useState<{ scanId: number } | null>(null)
   const lastTickRef = useRef<number>(Date.now())
   const initializedRef = useRef(false)
-  const scannerRef = useRef<any>(null)
-  const processingScanRef = useRef(false)
 
   const requestLocation = useCallback(async () => {
     setRequestingLocation(true)
@@ -201,119 +198,6 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     }
   }
 
-  const executeAction = async (action: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
-    setActionLoading(action)
-    setActionResult(null)
-    try {
-      const extras = coords ? { latitude: coords.lat, longitude: coords.lng } : undefined
-
-      if (action === 'clock_in') {
-        await api.attendance.clockIn(employeeId, undefined, extras)
-        setActionResult({ type: 'success', message: 'Entrada registrada' })
-      } else if (action === 'clock_out') {
-        await api.attendance.clockOut(employeeId)
-        setActionResult({ type: 'success', message: 'Salida registrada' })
-      } else if (action === 'break_start') {
-        await api.attendance.breakStart(employeeId)
-        setActionResult({ type: 'success', message: 'Descanso iniciado' })
-      } else if (action === 'break_end') {
-        await api.attendance.breakEnd(employeeId)
-        setActionResult({ type: 'success', message: 'Descanso finalizado' })
-      }
-
-      initializedRef.current = false
-      await loadData()
-    } catch (e: any) {
-      setActionResult({ type: 'error', message: e.message || 'Error al registrar' })
-    }
-    setActionLoading('')
-    stopScanner()
-    setTimeout(() => setActionResult(null), 4000)
-  }
-
-  const getActionForState = (): 'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null => {
-    const hasEntry = !!data?.today_record?.entry_time
-    const hasSession = !!data?.active_session_id
-    const onBreak = !!data?.today_record?.break_start && !data?.today_record?.break_end
-
-    if (!hasEntry) return 'clock_in'
-    if (onBreak) return 'break_end'
-    if (hasSession) return 'clock_out'
-    return null
-  }
-
-  const getActionLabel = (action: string): string => {
-    switch (action) {
-      case 'clock_in': return 'Registrar entrada'
-      case 'clock_out': return 'Registrar salida'
-      case 'break_start': return 'Iniciar descanso'
-      case 'break_end': return 'Finalizar descanso'
-      default: return ''
-    }
-  }
-
-  const startScanner = async () => {
-    processingScanRef.current = false
-    setShowScanner(true)
-
-    try {
-      const { Html5Qrcode } = await import('html5-qrcode')
-
-      if (scannerRef.current) {
-        try { await scannerRef.current.stop() } catch {}
-        scannerRef.current = null
-      }
-
-      const scanner = new Html5Qrcode('emp-qr-reader')
-      scannerRef.current = scanner
-
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        async (decodedText: string) => {
-          if (processingScanRef.current) return
-          const scannedId = parseInt(decodedText.replace('AS:', ''))
-          if (isNaN(scannedId)) return
-          if (scannedId !== employeeId) {
-            setActionResult({ type: 'error', message: 'Este QR no corresponde a tu cuenta' })
-            setTimeout(() => setActionResult(null), 3000)
-            return
-          }
-
-          processingScanRef.current = true
-          try { await scanner.stop() } catch {}
-
-          const action = getActionForState()
-          if (action) {
-            await executeAction(action)
-          }
-        },
-        () => {}
-      )
-    } catch (err: any) {
-      setActionResult({ type: 'error', message: 'No se pudo acceder a la camara' })
-      setShowScanner(false)
-      setTimeout(() => setActionResult(null), 3000)
-    }
-  }
-
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      try { scannerRef.current.stop() } catch {}
-      scannerRef.current = null
-    }
-    setShowScanner(false)
-    processingScanRef.current = false
-  }
-
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        try { scannerRef.current.stop() } catch {}
-      }
-    }
-  }, [])
-
   if (locationGranted === null || requestingLocation) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -335,7 +219,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           </div>
           <h2 className="text-lg font-semibold text-zinc-800 mb-2">Ubicacion requerida</h2>
           <p className="text-sm text-zinc-500 mb-6">
-            Debes permitir el acceso a tu ubicacion para usar esta aplicacion. Tu ubicacion se usa solo para verificar que este dentro del perimetro de trabajo.
+            Debes permitir el acceso a tu ubicacion para usar esta aplicacion.
           </p>
           <button
             onClick={requestLocation}
@@ -375,7 +259,6 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const onBreak = !!rec?.break_start && !rec?.break_end
   const hasSession = !!data?.active_session_id
   const hasEntry = !!rec?.entry_time
-  const pendingAction = getActionForState()
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -403,24 +286,11 @@ export default function EmployeeAppPage({ employeeId }: Props) {
           </div>
         )}
 
-        {showScanner && (
-          <div className="bg-white rounded-xl border border-zinc-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-zinc-700">Escanea tu QR</p>
-              <button onClick={stopScanner} className="p-1 rounded-lg hover:bg-zinc-100">
-                <X size={18} className="text-zinc-400" />
-              </button>
-            </div>
-            <div id="emp-qr-reader" className="w-full rounded-xl overflow-hidden" style={{ minHeight: 250 }} />
-            <p className="text-xs text-zinc-400 text-center mt-2">Apunta a tu codigo QR para {pendingAction ? getActionLabel(pendingAction).toLowerCase() : 'registrar'}</p>
-          </div>
-        )}
-
         {pendingScan && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 max-w-sm w-full flex flex-col items-center gap-4 shadow-xl">
               <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-                <Bell size={32} className="text-amber-600" />
+                <Bell size={32} className="text-amber-600 animate-bounce" />
               </div>
               <div className="text-center">
                 <h2 className="text-xl font-bold text-zinc-800">Escaneo detectado</h2>
@@ -433,7 +303,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                     disabled={!!actionLoading}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-40"
                   >
-                    <LogIn size={18} /> Registrar entrada
+                    Registrar entrada
                   </button>
                 )}
                 {hasEntry && hasSession && !onBreak && (
@@ -443,14 +313,14 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                       disabled={!!actionLoading}
                       className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-40"
                     >
-                      <Coffee size={18} /> Iniciar descanso
+                      Iniciar descanso
                     </button>
                     <button
                       onClick={() => respondToScan('clock_out')}
                       disabled={!!actionLoading}
                       className="w-full flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40"
                     >
-                      <LogOut size={18} /> Registrar salida
+                      Registrar salida
                     </button>
                   </>
                 )}
@@ -460,7 +330,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                     disabled={!!actionLoading}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-40"
                   >
-                    <Coffee size={18} /> Finalizar descanso
+                    Finalizar descanso
                   </button>
                 )}
                 {actionLoading && (
@@ -562,22 +432,6 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                 {geoStatus.distance !== undefined && `${Math.round(geoStatus.distance)}m`}
               </p>
             )}
-          </div>
-        )}
-
-        {pendingAction && !showScanner && !actionLoading && (
-          <button
-            onClick={startScanner}
-            className="w-full flex items-center justify-center gap-2 py-4 bg-zinc-900 text-white rounded-xl text-base font-medium hover:bg-zinc-800 transition-colors"
-          >
-            <Camera size={22} /> Escanear QR para {getActionLabel(pendingAction).toLowerCase()}
-          </button>
-        )}
-
-        {actionLoading && (
-          <div className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 text-zinc-400 rounded-xl text-sm font-medium">
-            <div className="animate-spin w-4 h-4 border-2 border-zinc-300 border-t-zinc-600 rounded-full" />
-            Registrando...
           </div>
         )}
 

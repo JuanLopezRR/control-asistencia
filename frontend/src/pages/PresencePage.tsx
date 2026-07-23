@@ -112,10 +112,10 @@ export default function PresencePage() {
           </select>
           <button
             onClick={handleSchedule}
-            disabled={!selectedEmp}
+            disabled={!selectedEmp || scheduling}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 disabled:opacity-40 transition-colors"
           >
-            <Send size={14} /> Enviar ahora
+            <Send size={14} /> {scheduling ? 'Enviando...' : 'Enviar ahora'}
           </button>
         </div>
         {scheduleMsg && (

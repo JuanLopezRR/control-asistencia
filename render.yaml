@@ -9,3 +9,7 @@ services:
         value: "3.12.9"
       - key: APP_ENV
         value: "production"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false

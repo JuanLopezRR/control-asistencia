@@ -1,5 +1,5 @@
 const DEFAULT_API_URL = import.meta.env.PROD
-  ? (import.meta.env.VITE_API_URL || '/api')
+  ? (import.meta.env.VITE_API_URL || 'https://control-asistencia-s090.onrender.com/api')
   : '/api'
 
 function getBaseUrl(): string {

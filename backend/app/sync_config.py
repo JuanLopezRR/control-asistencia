@@ -5,6 +5,9 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 
 def get_supabase_url() -> str | None:
+    env_url = os.getenv("SUPABASE_URL")
+    if env_url:
+        return env_url
     try:
         with open(CONFIG_PATH) as f:
             data = json.load(f)

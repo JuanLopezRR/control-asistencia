@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { ScanLine, Camera, CameraOff, CheckCircle2, XCircle, Clock, Bell } from 'lucide-react'
+import { ScanLine, Camera, CameraOff, CheckCircle2, XCircle, Bell } from 'lucide-react'
 import { api } from '../api/client'
 
 export default function QRScanPage() {

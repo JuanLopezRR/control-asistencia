@@ -374,6 +374,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const hours = data?.total_hours_today || 0
   const onBreak = !!rec?.break_start && !rec?.break_end
   const hasSession = !!data?.active_session_id
+  const hasEntry = !!rec?.entry_time
   const pendingAction = getActionForState()
 
   return (

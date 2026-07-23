@@ -5,7 +5,6 @@ import EmployeesPage from './pages/EmployeesPage'
 import AttendancePage from './pages/AttendancePage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
-import QRScanPage from './pages/QRScanPage'
 import FaceScanPage from './pages/FaceScanPage'
 import GeofencePage from './pages/GeofencePage'
 import SessionsPage from './pages/SessionsPage'
@@ -47,7 +46,6 @@ function App() {
       case 'dashboard': return <DashboardPage />
       case 'employees': return <EmployeesPage />
       case 'attendance': return <AttendancePage />
-      case 'qr-scan': return <QRScanPage />
       case 'face-scan': return <FaceScanPage />
       case 'reports': return <ReportsPage />
       case 'geofence': return <GeofencePage />

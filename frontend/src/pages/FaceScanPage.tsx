@@ -1,23 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { UserCheck, UserX, Clock, ScanLine, AlertCircle, LogOut, Coffee, LogIn, Power } from 'lucide-react'
+import { UserCheck, UserX, Clock, ScanLine, AlertCircle, Power, Bell } from 'lucide-react'
 import { api } from '../api/client'
-import { getGeoAndWifi } from '../utils/location'
-
-type EmployeeStatus = 'none' | 'working' | 'on_break'
-
-interface ScanAction {
-  type: 'clock_in' | 'clock_out' | 'break_start' | 'break_end'
-  label: string
-  icon: any
-  color: string
-}
 
 export default function FaceScanPage() {
   const [status, setStatus] = useState<'idle' | 'loading-models' | 'ready' | 'scanning' | 'error'>('idle')
   const [result, setResult] = useState<{ type: 'success' | 'error' | 'late'; message: string; employee?: string; time?: string } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [matchInfo, setMatchInfo] = useState('')
-  const [pendingAction, setPendingAction] = useState<{ empId: number; empName: string; actions: ScanAction[] } | null>(null)
   const [lastEvent, setLastEvent] = useState<{ employee: string; action: string; time: string } | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -31,26 +20,15 @@ export default function FaceScanPage() {
   const matchCountRef = useRef(0)
   const processingRef = useRef(false)
   const kioskModeRef = useRef(true)
-
-  const getActionsForStatus = (status: EmployeeStatus, hasEntry: boolean): ScanAction[] => {
-    if (status === 'none' || !hasEntry) {
-      return [{ type: 'clock_in', label: 'Registrar entrada', icon: LogIn, color: 'green' }]
-    }
-    if (status === 'on_break') {
-      return [{ type: 'break_end', label: 'Finalizar descanso', icon: Coffee, color: 'blue' }]
-    }
-    return [
-      { type: 'break_start', label: 'Iniciar descanso', icon: Coffee, color: 'amber' },
-      { type: 'clock_out', label: 'Registrar salida', icon: LogOut, color: 'red' },
-    ]
-  }
+  const qrCooldownRef = useRef(false)
+  const barcodeDetectorRef = useRef<any>(null)
 
   const resumeScanning = useCallback(() => {
     setTimeout(() => {
       setResult(null)
-      setPendingAction(null)
       processingRef.current = false
       matchCountRef.current = 0
+      qrCooldownRef.current = false
       setMatchInfo('')
       if (kioskModeRef.current && !scanActiveRef.current) {
         scanActiveRef.current = true
@@ -60,61 +38,51 @@ export default function FaceScanPage() {
     }, 3000)
   }, [])
 
-  const executeAction = async (empId: number, action: ScanAction, empName: string) => {
-    setPendingAction(null)
+  const handleFaceMatch = async (empId: number, empName: string) => {
     processingRef.current = true
+    scanActiveRef.current = false
 
     try {
-      const extras = await getGeoAndWifi()
-      let actionLabel = ''
-
-      if (action.type === 'clock_in') {
-        const lateCheck = await api.attendance.checkLate(empId)
-        const justification = lateCheck.is_late ? 'Reconocimiento facial - Tarde' : undefined
-        await api.attendance.clockIn(empId, justification, extras)
-        actionLabel = lateCheck.is_late ? 'Entrada (TARDE)' : 'Entrada'
-        setResult({
-          type: lateCheck.is_late ? 'late' : 'success',
-          message: lateCheck.is_late ? 'Entrada registrada (TARDE)' : 'Entrada registrada',
-          employee: empName,
-          time: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        })
-      } else if (action.type === 'clock_out') {
-        await api.attendance.clockOut(empId)
-        actionLabel = 'Salida'
-        setResult({
-          type: 'success',
-          message: 'Salida registrada',
-          employee: empName,
-          time: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        })
-      } else if (action.type === 'break_start') {
-        await api.attendance.breakStart(empId)
-        actionLabel = 'Descanso iniciado'
-        setResult({
-          type: 'success',
-          message: 'Descanso iniciado',
-          employee: empName,
-          time: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        })
-      } else if (action.type === 'break_end') {
-        await api.attendance.breakEnd(empId)
-        actionLabel = 'Descanso finalizado'
-        setResult({
-          type: 'success',
-          message: 'Descanso finalizado',
-          employee: empName,
-          time: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        })
-      }
-
-      setLastEvent({
+      await api.attendance.createPendingScan(empId)
+      const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      setResult({
+        type: 'success',
+        message: 'Notificacion enviada a ' + empName,
         employee: empName,
-        action: actionLabel,
-        time: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        time: now,
       })
+      setLastEvent({ employee: empName, action: 'Escaneo facial — notificacion enviada', time: now })
     } catch (e: any) {
-      setResult({ type: 'error', message: e.message || 'Error al registrar' })
+      setResult({ type: 'error', message: e.message || 'Error al enviar notificacion' })
+    }
+
+    processingRef.current = false
+    if (kioskModeRef.current) {
+      resumeScanning()
+    } else {
+      setTimeout(() => setResult(null), 5000)
+    }
+  }
+
+  const handleQrDetected = async (empId: number) => {
+    if (processingRef.current || qrCooldownRef.current) return
+    processingRef.current = true
+    scanActiveRef.current = false
+    qrCooldownRef.current = true
+
+    try {
+      const emp = await api.employees.get(empId)
+      await api.attendance.createPendingScan(empId)
+      const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      setResult({
+        type: 'success',
+        message: 'Notificacion enviada a ' + emp.name,
+        employee: emp.name,
+        time: now,
+      })
+      setLastEvent({ employee: emp.name, action: 'Escaneo QR — notificacion enviada', time: now })
+    } catch (e: any) {
+      setResult({ type: 'error', message: e.message || 'Error al escanear QR' })
     }
 
     processingRef.current = false
@@ -214,51 +182,38 @@ export default function FaceScanPage() {
         }
       }
 
-      if (detections.length > 0) {
+      if (!processingRef.current && !qrCooldownRef.current && detections.length > 0) {
         const match = findBestMatch(detections[0].descriptor)
         if (match) {
           matchCountRef.current += 1
           setMatchInfo(`Cara detectada: ${match.name} (${matchCountRef.current}/2)`)
           if (matchCountRef.current >= 2) {
             scanActiveRef.current = false
-            if (processingRef.current) return
-
-            try {
-              const appData = await api.employees.appData(match.id)
-              const empName = appData.employee?.name || match.name
-              const hasSession = !!appData.active_session_id
-              const onBreak = !!appData.today_record?.break_start && !appData.today_record?.break_end
-              const hasEntry = !!appData.today_record?.entry_time
-
-              let empStatus: EmployeeStatus = 'none'
-              if (hasSession && onBreak) empStatus = 'on_break'
-              else if (hasSession) empStatus = 'working'
-
-              const actions = getActionsForStatus(empStatus, hasEntry)
-
-              if (actions.length === 1) {
-                await executeAction(match.id, actions[0], empName)
-              } else {
-                processingRef.current = false
-                setPendingAction({ empId: match.id, empName, actions })
-              }
-            } catch (e: any) {
-              processingRef.current = false
-              setResult({ type: 'error', message: e.message })
-              if (kioskModeRef.current) {
-                resumeScanning()
-              } else {
-                setTimeout(() => setResult(null), 3000)
-              }
-            }
+            await handleFaceMatch(match.id, match.name)
           }
         } else {
           matchCountRef.current = 0
           setMatchInfo(detections.length > 0 ? 'Cara detectada pero no coincide' : '')
         }
-      } else {
+      } else if (detections.length === 0) {
         matchCountRef.current = 0
         setMatchInfo('')
+      }
+
+      if (!processingRef.current && !qrCooldownRef.current && canvas && barcodeDetectorRef.current) {
+        try {
+          const bitmap = await createImageBitmap(canvas)
+          const codes = await barcodeDetectorRef.current.detect(bitmap)
+          if (codes.length > 0) {
+            const decoded = codes[0].rawValue
+            const empId = parseInt(decoded.replace('AS:', ''))
+            if (!isNaN(empId)) {
+              scanActiveRef.current = false
+              setMatchInfo('')
+              await handleQrDetected(empId)
+            }
+          }
+        } catch {}
       }
     } catch (e) {
       console.error('Detection error:', e)
@@ -274,8 +229,8 @@ export default function FaceScanPage() {
     setResult(null)
     setErrorMsg('')
     setMatchInfo('')
-    setPendingAction(null)
     matchCountRef.current = 0
+    qrCooldownRef.current = false
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -288,7 +243,7 @@ export default function FaceScanPage() {
       setStatus('scanning')
       scanActiveRef.current = true
     } catch (err: any) {
-      setErrorMsg('No se pudo acceder a la cámara: ' + err.message)
+      setErrorMsg('No se pudo acceder a la camara: ' + err.message)
       setStatus('error')
       return
     }
@@ -298,9 +253,17 @@ export default function FaceScanPage() {
       if (!faceapiRef.current) return
     }
 
+    if (!barcodeDetectorRef.current) {
+      try {
+        if ('BarcodeDetector' in window) {
+          barcodeDetectorRef.current = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
+        }
+      } catch {}
+    }
+
     const count = await loadKnownFaces()
-    if (count === 0) {
-      setErrorMsg('No hay empleados con cara registrada.')
+    if (count === 0 && !barcodeDetectorRef.current) {
+      setErrorMsg('No hay empleados con cara registrada y QR no disponible en este navegador.')
       scanActiveRef.current = false
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop())
@@ -366,8 +329,8 @@ export default function FaceScanPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-800">Escaneo Facial</h1>
-          <p className="text-sm text-zinc-400 mt-0.5">Reconocimiento facial automatico — entrada, salida o descanso</p>
+          <h1 className="text-xl font-semibold text-zinc-800">Escaneo</h1>
+          <p className="text-sm text-zinc-400 mt-0.5">Reconocimiento facial y codigo QR — kiosco activo</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
@@ -410,7 +373,7 @@ export default function FaceScanPage() {
             />
             {!isScanning && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <UserCheck size={48} className="text-zinc-600" />
+                <ScanLine size={48} className="text-zinc-600" />
                 <p className="text-xs text-zinc-500 text-center px-4">
                   {status === 'loading-models' ? 'Cargando modelos...' :
                    status === 'error' ? 'Error al cargar' :
@@ -429,53 +392,7 @@ export default function FaceScanPage() {
         </div>
 
         <div className="flex flex-col items-center justify-center">
-          {pendingAction ? (
-            <div className="flex flex-col items-center gap-4 p-8 rounded-2xl border-2 border-zinc-200 bg-white">
-              <div className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center">
-                <ScanLine size={32} className="text-zinc-600" />
-              </div>
-              <div className="text-center">
-                <h2 className="text-xl font-bold text-zinc-800">{pendingAction.empName}</h2>
-                <p className="text-sm text-zinc-400 mt-1">Que desea realizar?</p>
-              </div>
-              <div className="flex flex-col gap-2 w-full max-w-xs">
-                {pendingAction.actions.map((action) => {
-                  const Icon = action.icon
-                  const colors = {
-                    green: 'bg-green-600 hover:bg-green-700',
-                    red: 'bg-red-600 hover:bg-red-700',
-                    amber: 'bg-amber-600 hover:bg-amber-700',
-                    blue: 'bg-blue-600 hover:bg-blue-700',
-                  }
-                  return (
-                    <button
-                      key={action.type}
-                      onClick={() => executeAction(pendingAction.empId, action, pendingAction.empName)}
-                      className={`flex items-center justify-center gap-2 px-6 py-3 ${colors[action.color as keyof typeof colors]} text-white rounded-xl text-sm font-medium transition-colors`}
-                    >
-                      <Icon size={18} /> {action.label}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => {
-                    setPendingAction(null)
-                    matchCountRef.current = 0
-                    setMatchInfo('')
-                    processingRef.current = false
-                    if (kioskModeRef.current) {
-                      scanActiveRef.current = true
-                      setStatus('scanning')
-                      rafRef.current = requestAnimationFrame(detectLoop)
-                    }
-                  }}
-                  className="flex items-center justify-center gap-2 px-6 py-2 text-zinc-400 text-sm hover:text-zinc-600 transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          ) : result ? (
+          {result ? (
             <div className={`flex flex-col items-center gap-3 p-8 rounded-2xl border-2 ${
               result.type === 'success' ? 'border-green-300 bg-green-50' :
               result.type === 'late' ? 'border-amber-300 bg-amber-50' :
@@ -490,20 +407,26 @@ export default function FaceScanPage() {
               }`}>{result.message}</h2>
               {result.employee && <p className="text-lg font-medium text-zinc-700">{result.employee}</p>}
               {result.time && <p className="text-sm text-zinc-500">{result.time}</p>}
+              {result.type === 'success' && (
+                <div className="flex items-center gap-2 text-sm text-zinc-500 mt-2">
+                  <Bell size={16} />
+                  <span>El empleado vera las opciones en su celular</span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 text-center">
               <ScanLine size={80} className={isScanning ? 'text-green-400 animate-pulse' : 'text-zinc-300'} />
               <div>
                 <p className="text-sm text-zinc-500">
-                  {isScanning ? 'Buscando rostros... Mira a la camara' :
+                  {isScanning ? 'Buscando rostros y codigos QR...' :
                    status === 'loading-models' ? 'Cargando modelos de IA...' :
                    'Camara inactiva'}
                 </p>
                 {isScanning && (
                   <>
                     <p className="text-xs text-zinc-400 mt-1">
-                      {knownFacesRef.current.length} empleado(s) registrado(s)
+                      {knownFacesRef.current.length} empleado(s) registrado(s) — Facial + QR
                     </p>
                     {matchInfo && (
                       <p className="text-xs text-green-600 mt-1 font-medium">{matchInfo}</p>

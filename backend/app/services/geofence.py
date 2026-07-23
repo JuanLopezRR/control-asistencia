@@ -19,7 +19,7 @@ def check_inside_geofence(db: Session, latitude: float, longitude: float, work_l
     if work_location_id:
         location = db.query(WorkLocation).filter(WorkLocation.id == work_location_id, WorkLocation.active == True).first()
         if not location:
-            return {"inside": False, "distance_meters": float('inf'), "work_location": None}
+            return {"inside": False, "distance_meters": 999999, "work_location": None}
         dist = haversine_distance(latitude, longitude, location.latitude, location.longitude)
         return {"inside": dist <= location.radius_meters, "distance_meters": round(dist, 2), "work_location": location}
 

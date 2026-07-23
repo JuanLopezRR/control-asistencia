@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle, XCircle, Clock, User } from 'lucide-react'
+import { Bell, CheckCircle, XCircle, Clock, User, Send } from 'lucide-react'
 import { api } from '../api/client'
 
 interface PresenceCheck {
@@ -16,9 +16,17 @@ interface PresenceCheck {
   employee?: { id: number; name: string }
 }
 
+interface Employee {
+  id: number
+  name: string
+}
+
 export default function PresencePage() {
   const [pending, setPending] = useState<PresenceCheck[]>([])
   const [history, setHistory] = useState<PresenceCheck[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [selectedEmp, setSelectedEmp] = useState<number | ''>('')
+  const [scheduleMsg, setScheduleMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tab, setTab] = useState<'pending' | 'history'>('pending')
 
   const load = async () => {
@@ -30,7 +38,27 @@ export default function PresencePage() {
     setHistory(h)
   }
 
-  useEffect(() => { load() }, [tab])
+  const loadEmployees = async () => {
+    try {
+      const emps = await api.employees.list()
+      setEmployees(emps)
+    } catch {}
+  }
+
+  useEffect(() => { load(); loadEmployees() }, [tab])
+
+  const handleSchedule = async () => {
+    if (!selectedEmp) return
+    try {
+      const res = await api.presence.schedule(selectedEmp)
+      setScheduleMsg({ type: 'success', text: `Validacion programada para ${res.employee}` })
+      setSelectedEmp('')
+      await load()
+    } catch (e: any) {
+      setScheduleMsg({ type: 'error', text: e.message || 'Error al programar' })
+    }
+    setTimeout(() => setScheduleMsg(null), 4000)
+  }
 
   const formatTime = (dt: string) => new Date(dt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const formatDate = (dt: string) => new Date(dt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -62,6 +90,34 @@ export default function PresencePage() {
       <div>
         <h1 className="text-xl font-semibold text-zinc-800">Validaciones Aleatorias</h1>
         <p className="text-sm text-zinc-400 mt-0.5">{pending.length} verificaciones pendientes</p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-zinc-200 p-5">
+        <p className="text-sm font-medium text-zinc-700 mb-3">Programar validacion manual</p>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedEmp}
+            onChange={(e) => setSelectedEmp(e.target.value ? Number(e.target.value) : '')}
+            className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          >
+            <option value="">Seleccionar empleado...</option>
+            {employees.map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleSchedule}
+            disabled={!selectedEmp}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 disabled:opacity-40 transition-colors"
+          >
+            <Send size={14} /> Enviar ahora
+          </button>
+        </div>
+        {scheduleMsg && (
+          <p className={`mt-2 text-sm ${scheduleMsg.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+            {scheduleMsg.text}
+          </p>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -106,7 +162,7 @@ export default function PresencePage() {
                   <th className="text-left px-5 py-3 font-medium text-zinc-500 text-xs uppercase">Programada</th>
                   <th className="text-left px-5 py-3 font-medium text-zinc-500 text-xs uppercase">Respondida</th>
                   <th className="text-center px-5 py-3 font-medium text-zinc-500 text-xs uppercase">Estado</th>
-                  <th className="text-left px-5 py-3 font-medium text-zinc-500 text-xs uppercase">Método</th>
+                  <th className="text-left px-5 py-3 font-medium text-zinc-500 text-xs uppercase">Metodo</th>
                 </tr>
               </thead>
               <tbody>

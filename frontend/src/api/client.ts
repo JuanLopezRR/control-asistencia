@@ -85,6 +85,8 @@ export const api = {
       request<any>(`/attendance/pending-scan?employee_id=${employeeId}`, { method: 'POST' }),
     getPendingScan: (employeeId: number) =>
       request<any>(`/attendance/pending-scan/${employeeId}`),
+    dismissPendingScan: (scanId: number, employeeId: number) =>
+      request<any>(`/attendance/pending-scan/dismiss?scan_id=${scanId}&employee_id=${employeeId}`, { method: 'POST' }),
     respondPendingScan: (scanId: number, action: string, employeeId: number) =>
       request<any>(`/attendance/pending-scan/respond?scan_id=${scanId}&action=${action}&employee_id=${employeeId}&tz_offset=${new Date().getTimezoneOffset()}`, { method: 'POST' }),
   },

@@ -33,6 +33,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [pendingScan, setPendingScan] = useState<{ scanId: number } | null>(null)
   const lastTickRef = useRef<number>(Date.now())
   const initializedRef = useRef(false)
+  const dismissedScansRef = useRef<Set<number>>(new Set())
 
   const requestLocation = useCallback(async () => {
     setRequestingLocation(true)
@@ -72,7 +73,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
     const checkPending = async () => {
       try {
         const res = await api.attendance.getPendingScan(employeeId)
-        if (res.pending && !pendingScan) {
+        if (res.pending && !pendingScan && !dismissedScansRef.current.has(res.scan_id)) {
           setPendingScan({ scanId: res.scan_id })
         }
       } catch {}
@@ -341,7 +342,11 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                 )}
                 {!actionLoading && (
                   <button
-                    onClick={() => setPendingScan(null)}
+                    onClick={() => {
+                      dismissedScansRef.current.add(pendingScan.scanId)
+                      api.attendance.dismissPendingScan(pendingScan.scanId, employeeId).catch(() => {})
+                      setPendingScan(null)
+                    }}
                     className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-sm hover:text-zinc-600 transition-colors"
                   >
                     Cerrar

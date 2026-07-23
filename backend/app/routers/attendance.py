@@ -471,6 +471,20 @@ def get_pending_scan(employee_id: int, db: Session = Depends(get_db)):
     return {"pending": True, "scan_id": scan.id, "created_at": scan.created_at.isoformat()}
 
 
+@router.post("/pending-scan/dismiss")
+def dismiss_pending_scan(scan_id: int, employee_id: int, db: Session = Depends(get_db)):
+    scan = db.query(PendingScan).filter(
+        PendingScan.id == scan_id,
+        PendingScan.employee_id == employee_id,
+        PendingScan.status == "pending"
+    ).first()
+    if not scan:
+        return {"status": "ok"}
+    scan.status = "expired"
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/pending-scan/respond")
 def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
     scan = db.query(PendingScan).filter(

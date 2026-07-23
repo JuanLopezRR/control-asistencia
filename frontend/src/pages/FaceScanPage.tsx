@@ -202,17 +202,19 @@ export default function FaceScanPage() {
         setMatchInfo('')
       }
 
-      if (!processingRef.current && !qrCooldownRef.current && canvas && barcodeDetectorRef.current) {
+      if (!processingRef.current && !qrCooldownRef.current && barcodeDetectorRef.current) {
         try {
-          const bitmap = await createImageBitmap(canvas)
-          const codes = await barcodeDetectorRef.current.detect(bitmap)
-          if (codes.length > 0) {
-            const decoded = codes[0].rawValue
-            const empId = parseInt(decoded.replace('AS:', ''))
-            if (!isNaN(empId)) {
-              scanActiveRef.current = false
-              setMatchInfo('')
-              await handleQrDetected(empId)
+          const video = videoRef.current
+          if (video && video.readyState === 4) {
+            const codes = await barcodeDetectorRef.current.detect(video)
+            if (codes.length > 0) {
+              const decoded = codes[0].rawValue
+              const empId = parseInt(decoded.replace('AS:', ''))
+              if (!isNaN(empId)) {
+                scanActiveRef.current = false
+                setMatchInfo('')
+                await handleQrDetected(empId)
+              }
             }
           }
         } catch {}
@@ -254,7 +256,7 @@ export default function FaceScanPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingModeRef.current, width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: facingModeRef.current, width: { ideal: 1280 }, height: { ideal: 720 } },
       })
       streamRef.current = stream
       if (videoRef.current) {
@@ -397,7 +399,7 @@ export default function FaceScanPage() {
             <canvas
               ref={canvasRef}
               className="absolute top-0 left-0 w-full h-full"
-              style={{ display: isScanning ? 'block' : 'none' }}
+              style={{ display: isScanning ? 'block' : 'none', transform: mirror ? 'scaleX(-1)' : 'none' }}
             />
             {!isScanning && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">

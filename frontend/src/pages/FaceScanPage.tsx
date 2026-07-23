@@ -8,7 +8,6 @@ export default function FaceScanPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [matchInfo, setMatchInfo] = useState('')
   const [lastEvent, setLastEvent] = useState<{ employee: string; action: string; time: string } | null>(null)
-  const [mirror, setMirror] = useState(true)
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([])
   const [selectedCamera, setSelectedCamera] = useState('')
 
@@ -365,6 +364,7 @@ export default function FaceScanPage() {
   }, [])
 
   const isScanning = status === 'scanning'
+  const mirror = cameras.length > 0 && selectedCamera === cameras[0]?.id
 
   return (
     <div className="space-y-6">

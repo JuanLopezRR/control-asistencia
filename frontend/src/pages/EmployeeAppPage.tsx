@@ -87,17 +87,21 @@ export default function EmployeeAppPage({ employeeId }: Props) {
 
     if (!initializedRef.current) {
       const nowMs = Date.now()
-      const entryMs = new Date(`1970-01-01T${rec.entry_time}`).getTime()
-      const totalElapsed = Math.floor((nowMs - entryMs) / 1000)
+      const parts = rec.entry_time.split(':').map(Number)
+      const today = new Date()
+      const entryDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parts[0], parts[1], parts[2] || 0)
+      const totalElapsed = Math.max(0, Math.floor((nowMs - entryDate.getTime()) / 1000))
 
       let breakTotal = 0
       if (rec.break_start) {
-        const breakStartMs = new Date(`1970-01-01T${rec.break_start}`).getTime()
+        const bp = rec.break_start.split(':').map(Number)
+        const breakStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), bp[0], bp[1], bp[2] || 0)
         if (rec.break_end) {
-          const breakEndMs = new Date(`1970-01-01T${rec.break_end}`).getTime()
-          breakTotal = Math.floor((breakEndMs - breakStartMs) / 1000)
+          const bep = rec.break_end.split(':').map(Number)
+          const breakEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), bep[0], bep[1], bep[2] || 0)
+          breakTotal = Math.floor((breakEndDate.getTime() - breakStartDate.getTime()) / 1000)
         } else {
-          breakTotal = Math.floor((nowMs - breakStartMs) / 1000)
+          breakTotal = Math.floor((nowMs - breakStartDate.getTime()) / 1000)
         }
       }
 

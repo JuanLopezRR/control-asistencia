@@ -65,15 +65,16 @@ export const api = {
       if (extras?.longitude !== undefined) q.set('longitude', String(extras.longitude))
       if (extras?.wifi_ssid) q.set('wifi_ssid', extras.wifi_ssid)
       if (extras?.entry_method) q.set('entry_method', extras.entry_method)
+      q.set('tz_offset', String(new Date().getTimezoneOffset()))
       return request<any>(`/attendance/clock-in?${q}`, { method: 'POST' })
     },
     checkLate: (employeeId: number) => request<any>(`/attendance/check-late/${employeeId}`),
     clockOut: (employeeId: number) =>
-      request<any>(`/attendance/clock-out?employee_id=${employeeId}`, { method: 'POST' }),
+      request<any>(`/attendance/clock-out?employee_id=${employeeId}&tz_offset=${new Date().getTimezoneOffset()}`, { method: 'POST' }),
     breakStart: (employeeId: number) =>
-      request<any>(`/attendance/break-start?employee_id=${employeeId}`, { method: 'POST' }),
+      request<any>(`/attendance/break-start?employee_id=${employeeId}&tz_offset=${new Date().getTimezoneOffset()}`, { method: 'POST' }),
     breakEnd: (employeeId: number) =>
-      request<any>(`/attendance/break-end?employee_id=${employeeId}`, { method: 'POST' }),
+      request<any>(`/attendance/break-end?employee_id=${employeeId}&tz_offset=${new Date().getTimezoneOffset()}`, { method: 'POST' }),
     create: (data: any) =>
       request<any>('/attendance/', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) =>

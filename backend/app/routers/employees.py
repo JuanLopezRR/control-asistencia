@@ -117,7 +117,7 @@ def employee_app_data(employee_id: int, db: Session = Depends(get_db)):
 
     total_hours_today = 0.0
     if session:
-        elapsed = (datetime.now() - session.start_time).total_seconds() / 3600
+        elapsed = (datetime.utcnow() - session.start_time).total_seconds() / 3600
         total_hours_today = round(elapsed, 2)
 
     completed_sessions = db.query(WorkSession).filter(

@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
@@ -174,13 +174,19 @@ def clock_in(
     longitude: Optional[float] = Query(None),
     wifi_ssid: Optional[str] = Query(None),
     entry_method: Optional[str] = Query("manual"),
+    tz_offset: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
     today = date.today()
-    now = datetime.now()
+    utc_now = datetime.utcnow()
+    if tz_offset is not None:
+        local_now = utc_now - timedelta(minutes=tz_offset)
+    else:
+        local_now = utc_now
+    now = local_now
     scheduled = now.replace(hour=SCHEDULE_START_HOUR, minute=SCHEDULE_START_MINUTE, second=0, microsecond=0)
     grace = scheduled.replace(minute=SCHEDULE_START_MINUTE + GRACE_MINUTES)
     is_late = now > grace
@@ -203,7 +209,7 @@ def clock_in(
         db.commit()
         db.refresh(existing)
         existing.employee = emp
-        _create_session_and_checks(db, employee_id, latitude, longitude, wifi_ssid, entry_method)
+        _create_session_and_checks(db, employee_id, latitude, longitude, wifi_ssid, entry_method, local_now)
         _try_sync(db)
         return _record_to_response(existing)
     record = AttendanceRecord(
@@ -218,7 +224,7 @@ def clock_in(
     db.commit()
     db.refresh(record)
     record.employee = emp
-    _create_session_and_checks(db, employee_id, latitude, longitude, wifi_ssid, entry_method)
+    _create_session_and_checks(db, employee_id, latitude, longitude, wifi_ssid, entry_method, local_now)
     _try_sync(db)
     return _record_to_response(record)
 
@@ -230,8 +236,11 @@ def _create_session_and_checks(
     longitude: Optional[float],
     wifi_ssid: Optional[str],
     entry_method: Optional[str],
+    local_now: Optional[datetime] = None,
 ):
     today = date.today()
+    if local_now is None:
+        local_now = datetime.utcnow()
     existing_session = db.query(WorkSession).filter(
         WorkSession.employee_id == employee_id,
         WorkSession.date == today,
@@ -250,7 +259,7 @@ def _create_session_and_checks(
         employee_id=employee_id,
         work_location_id=work_location_id,
         date=today,
-        start_time=datetime.now(),
+        start_time=local_now,
         status="active",
         entry_method=entry_method,
         entry_location_lat=latitude,
@@ -281,7 +290,7 @@ def _create_session_and_checks(
         wifi_check = WifiCheck(
             work_session_id=session.id,
             employee_id=employee_id,
-            checked_at=datetime.now(),
+            checked_at=local_now,
             expected_ssid=expected,
             actual_ssid=wifi_ssid,
             is_connected=True,
@@ -298,8 +307,9 @@ def _create_session_and_checks(
 
 
 @router.get("/check-late/{employee_id}")
-def check_late(employee_id: int):
-    now = datetime.now()
+def check_late(employee_id: int, tz_offset: Optional[int] = Query(None)):
+    utc_now = datetime.utcnow()
+    now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
     scheduled = now.replace(hour=SCHEDULE_START_HOUR, minute=SCHEDULE_START_MINUTE, second=0, microsecond=0)
     grace = scheduled.replace(minute=SCHEDULE_START_MINUTE + GRACE_MINUTES)
     return {
@@ -311,8 +321,10 @@ def check_late(employee_id: int):
 
 
 @router.post("/clock-out", response_model=AttendanceResponse)
-def clock_out(employee_id: int = Query(...), db: Session = Depends(get_db)):
+def clock_out(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
     today = date.today()
+    utc_now = datetime.utcnow()
+    local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
     record = (
         db.query(AttendanceRecord)
         .options(joinedload(AttendanceRecord.employee))
@@ -328,7 +340,7 @@ def clock_out(employee_id: int = Query(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Primero debe registrar entrada")
     if record.exit_time:
         raise HTTPException(status_code=400, detail="Ya registró salida hoy")
-    record.exit_time = datetime.now().time()
+    record.exit_time = local_now.time()
     record.synced = False
     db.commit()
     db.refresh(record)
@@ -338,10 +350,9 @@ def clock_out(employee_id: int = Query(...), db: Session = Depends(get_db)):
         WorkSession.status == "active",
     ).first()
     if session:
-        now = datetime.now()
-        session.end_time = now
+        session.end_time = local_now
         session.status = "completed"
-        session.total_hours = round((now - session.start_time).total_seconds() / 3600, 2)
+        session.total_hours = round((local_now - session.start_time).total_seconds() / 3600, 2)
         db.commit()
 
     _try_sync(db)
@@ -349,7 +360,9 @@ def clock_out(employee_id: int = Query(...), db: Session = Depends(get_db)):
 
 
 @router.post("/break-start", response_model=AttendanceResponse)
-def break_start(employee_id: int = Query(...), db: Session = Depends(get_db)):
+def break_start(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    utc_now = datetime.utcnow()
+    local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
     today = date.today()
     record = (
         db.query(AttendanceRecord)
@@ -364,7 +377,7 @@ def break_start(employee_id: int = Query(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="No tiene registro de entrada hoy")
     if record.break_start and not record.break_end:
         raise HTTPException(status_code=400, detail="Ya está en descanso")
-    record.break_start = datetime.now().time()
+    record.break_start = local_now.time()
     record.break_end = None
     record.synced = False
     db.commit()
@@ -374,7 +387,9 @@ def break_start(employee_id: int = Query(...), db: Session = Depends(get_db)):
 
 
 @router.post("/break-end", response_model=AttendanceResponse)
-def break_end(employee_id: int = Query(...), db: Session = Depends(get_db)):
+def break_end(employee_id: int = Query(...), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    utc_now = datetime.utcnow()
+    local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
     today = date.today()
     record = (
         db.query(AttendanceRecord)
@@ -391,7 +406,7 @@ def break_end(employee_id: int = Query(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="No inició descanso")
     if record.break_end:
         raise HTTPException(status_code=400, detail="Ya terminó el descanso")
-    record.break_end = datetime.now().time()
+    record.break_end = local_now.time()
     record.synced = False
     db.commit()
     db.refresh(record)

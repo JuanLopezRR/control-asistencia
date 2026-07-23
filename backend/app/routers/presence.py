@@ -12,8 +12,11 @@ router = APIRouter(prefix="/api/presence", tags=["presence"])
 
 @router.get("/pending", response_model=List[PresenceCheckResponse])
 def list_pending(employee_id: Optional[int] = Query(None), tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    check_missed_verifications(db)
-    db.commit()
+    try:
+        check_missed_verifications(db)
+        db.commit()
+    except Exception:
+        pass
     return get_pending_checks(db, employee_id)
 
 

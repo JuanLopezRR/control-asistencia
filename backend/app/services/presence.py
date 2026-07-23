@@ -76,16 +76,19 @@ def check_missed_verifications(db: Session) -> list:
     now = datetime.utcnow()
     pending = db.query(PresenceCheck).filter(
         PresenceCheck.status == "pending",
-        PresenceCheck.scheduled_at + timedelta(seconds=PresenceCheck.timeout_seconds) < now
+        PresenceCheck.scheduled_at < now,
     ).all()
 
     missed = []
     for check in pending:
-        check.status = "missed"
-        check.responded_at = None
-        missed.append(check)
+        elapsed = (now - check.scheduled_at).total_seconds()
+        if elapsed > (check.timeout_seconds or 120):
+            check.status = "missed"
+            check.responded_at = None
+            missed.append(check)
 
-    db.flush()
+    if missed:
+        db.flush()
     return missed
 
 

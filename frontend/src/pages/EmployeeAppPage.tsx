@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, X, Camera } from 'lucide-react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, X, Camera, Bell, LogIn, LogOut } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
 
@@ -31,6 +31,7 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const [actionLoading, setActionLoading] = useState('')
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [showScanner, setShowScanner] = useState(false)
+  const [pendingScan, setPendingScan] = useState<{ scanId: number } | null>(null)
   const lastTickRef = useRef<number>(Date.now())
   const initializedRef = useRef(false)
   const scannerRef = useRef<any>(null)
@@ -68,6 +69,43 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   useEffect(() => {
     if (locationGranted) loadData()
   }, [locationGranted])
+
+  useEffect(() => {
+    if (!locationGranted) return
+    const checkPending = async () => {
+      try {
+        const res = await api.attendance.getPendingScan(employeeId)
+        if (res.pending && !pendingScan) {
+          setPendingScan({ scanId: res.scan_id })
+        }
+      } catch {}
+    }
+    checkPending()
+    const interval = setInterval(checkPending, 3000)
+    return () => clearInterval(interval)
+  }, [locationGranted, employeeId])
+
+  const respondToScan = async (action: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+    if (!pendingScan) return
+    setActionLoading(action)
+    try {
+      await api.attendance.respondPendingScan(pendingScan.scanId, action, employeeId)
+      const labels: Record<string, string> = {
+        clock_in: 'Entrada registrada',
+        clock_out: 'Salida registrada',
+        break_start: 'Descanso iniciado',
+        break_end: 'Descanso finalizado',
+      }
+      setActionResult({ type: 'success', message: labels[action] })
+      setPendingScan(null)
+      initializedRef.current = false
+      await loadData()
+    } catch (e: any) {
+      setActionResult({ type: 'error', message: e.message || 'Error al registrar' })
+    }
+    setActionLoading('')
+    setTimeout(() => setActionResult(null), 4000)
+  }
 
   useEffect(() => {
     if (!data?.active_session_id || !coords) return
@@ -374,6 +412,64 @@ export default function EmployeeAppPage({ employeeId }: Props) {
             </div>
             <div id="emp-qr-reader" className="w-full rounded-xl overflow-hidden" style={{ minHeight: 250 }} />
             <p className="text-xs text-zinc-400 text-center mt-2">Apunta a tu codigo QR para {pendingAction ? getActionLabel(pendingAction).toLowerCase() : 'registrar'}</p>
+          </div>
+        )}
+
+        {pendingScan && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full flex flex-col items-center gap-4 shadow-xl">
+              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
+                <Bell size={32} className="text-amber-600" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-zinc-800">Escaneo detectado</h2>
+                <p className="text-sm text-zinc-500 mt-1">Que deseas registrar?</p>
+              </div>
+              <div className="w-full flex flex-col gap-2">
+                {!hasEntry && (
+                  <button
+                    onClick={() => respondToScan('clock_in')}
+                    disabled={!!actionLoading}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-40"
+                  >
+                    <LogIn size={18} /> Registrar entrada
+                  </button>
+                )}
+                {hasEntry && hasSession && !onBreak && (
+                  <>
+                    <button
+                      onClick={() => respondToScan('break_start')}
+                      disabled={!!actionLoading}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-40"
+                    >
+                      <Coffee size={18} /> Iniciar descanso
+                    </button>
+                    <button
+                      onClick={() => respondToScan('clock_out')}
+                      disabled={!!actionLoading}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40"
+                    >
+                      <LogOut size={18} /> Registrar salida
+                    </button>
+                  </>
+                )}
+                {onBreak && (
+                  <button
+                    onClick={() => respondToScan('break_end')}
+                    disabled={!!actionLoading}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    <Coffee size={18} /> Finalizar descanso
+                  </button>
+                )}
+                {actionLoading && (
+                  <div className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 text-zinc-400 rounded-xl text-sm">
+                    <div className="animate-spin w-4 h-4 border-2 border-zinc-300 border-t-zinc-600 rounded-full" />
+                    Registrando...
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

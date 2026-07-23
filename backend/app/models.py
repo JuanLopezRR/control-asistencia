@@ -227,3 +227,13 @@ class SystemConfig(Base):
     config_value: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class PendingScan(Base):
+    __tablename__ = "pending_scans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    action_type: Mapped[str] = mapped_column(String(20), nullable=True)

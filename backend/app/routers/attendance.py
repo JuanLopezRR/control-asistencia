@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from app.database import get_db
-from app.models import Employee, AttendanceRecord, WorkSession, WorkLocation, Incident
+from app.models import Employee, AttendanceRecord, WorkSession, WorkLocation, Incident, PendingScan
 from app.sync import push_to_supabase
 from app.sync_config import get_supabase_url
 from app.schemas import (
@@ -444,3 +444,95 @@ def sync_push(data: SyncPush, db: Session = Depends(get_db)):
         return {"status": "ok", "pushed": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pending-scan")
+def create_pending_scan(employee_id: int, db: Session = Depends(get_db)):
+    db.query(PendingScan).filter(
+        PendingScan.employee_id == employee_id,
+        PendingScan.status == "pending"
+    ).update({"status": "expired"})
+    scan = PendingScan(employee_id=employee_id, status="pending")
+    db.add(scan)
+    db.commit()
+    db.refresh(scan)
+    return {"id": scan.id, "employee_id": scan.employee_id, "status": scan.status}
+
+
+@router.get("/pending-scan/{employee_id}")
+def get_pending_scan(employee_id: int, db: Session = Depends(get_db)):
+    scan = db.query(PendingScan).filter(
+        PendingScan.employee_id == employee_id,
+        PendingScan.status == "pending"
+    ).first()
+    if not scan:
+        return {"pending": False}
+    return {"pending": True, "scan_id": scan.id, "created_at": scan.created_at.isoformat()}
+
+
+@router.post("/pending-scan/respond")
+def respond_pending_scan(scan_id: int, action: str, employee_id: int, tz_offset: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    scan = db.query(PendingScan).filter(
+        PendingScan.id == scan_id,
+        PendingScan.employee_id == employee_id,
+        PendingScan.status == "pending"
+    ).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Escaneo no encontrado o ya respondido")
+
+    utc_now = datetime.utcnow()
+    local_now = utc_now - timedelta(minutes=tz_offset) if tz_offset is not None else utc_now
+    today = local_now.date()
+
+    if action == "clock_in":
+        late = local_now.time() > time(8, 10)
+        record = AttendanceRecord(employee_id=employee_id, date=today, entry_time=local_now.time(), late=late, synced=False)
+        db.add(record)
+        db.flush()
+        _create_session_and_checks(db, employee_id, None, None, None, "qr_scan", local_now)
+        _try_sync(db)
+        scan.status = "completed"
+        scan.action_type = "clock_in"
+        db.commit()
+        return {"status": "ok", "action": "entrada"}
+
+    elif action == "clock_out":
+        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        if record:
+            record.exit_time = local_now.time()
+            record.synced = False
+        session = db.query(WorkSession).filter(WorkSession.employee_id == employee_id, WorkSession.status == "active").first()
+        if session:
+            session.end_time = local_now
+            session.status = "completed"
+            session.total_hours = round((local_now - session.start_time).total_seconds() / 3600, 2)
+        _try_sync(db)
+        scan.status = "completed"
+        scan.action_type = "clock_out"
+        db.commit()
+        return {"status": "ok", "action": "salida"}
+
+    elif action == "break_start":
+        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        if record:
+            record.break_start = local_now.time()
+            record.synced = False
+        _try_sync(db)
+        scan.status = "completed"
+        scan.action_type = "break_start"
+        db.commit()
+        return {"status": "ok", "action": "descanso_iniciado"}
+
+    elif action == "break_end":
+        record = db.query(AttendanceRecord).filter(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == today).first()
+        if record:
+            record.break_end = local_now.time()
+            record.synced = False
+        _try_sync(db)
+        scan.status = "completed"
+        scan.action_type = "break_end"
+        db.commit()
+        return {"status": "ok", "action": "descanso_finalizado"}
+
+    else:
+        raise HTTPException(status_code=400, detail="Accion no valida")

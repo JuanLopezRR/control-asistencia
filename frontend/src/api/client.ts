@@ -81,6 +81,12 @@ export const api = {
       request<any>(`/attendance/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) =>
       request<void>(`/attendance/${id}`, { method: 'DELETE' }),
+    createPendingScan: (employeeId: number) =>
+      request<any>(`/attendance/pending-scan?employee_id=${employeeId}`, { method: 'POST' }),
+    getPendingScan: (employeeId: number) =>
+      request<any>(`/attendance/pending-scan/${employeeId}`),
+    respondPendingScan: (scanId: number, action: string, employeeId: number) =>
+      request<any>(`/attendance/pending-scan/respond?scan_id=${scanId}&action=${action}&employee_id=${employeeId}&tz_offset=${new Date().getTimezoneOffset()}`, { method: 'POST' }),
   },
   locations: {
     list: () => request<any[]>('/locations/'),

@@ -339,6 +339,14 @@ export default function EmployeeAppPage({ employeeId }: Props) {
                     Registrando...
                   </div>
                 )}
+                {!actionLoading && (
+                  <button
+                    onClick={() => setPendingScan(null)}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 text-sm hover:text-zinc-600 transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                )}
               </div>
             </div>
           </div>

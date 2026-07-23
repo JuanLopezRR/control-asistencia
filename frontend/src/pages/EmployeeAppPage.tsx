@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, LogIn, LogOut, Camera, CameraOff, X } from 'lucide-react'
+import { Clock, MapPin, AlertTriangle, QrCode, RefreshCw, Navigation, Timer, Coffee, X, Camera } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api/client'
-import { getGeoAndWifi } from '../utils/location'
 
 interface Props {
   employeeId: number
@@ -337,7 +336,6 @@ export default function EmployeeAppPage({ employeeId }: Props) {
   const hours = data?.total_hours_today || 0
   const onBreak = !!rec?.break_start && !rec?.break_end
   const hasSession = !!data?.active_session_id
-  const hasEntry = !!rec?.entry_time
   const pendingAction = getActionForState()
 
   return (
